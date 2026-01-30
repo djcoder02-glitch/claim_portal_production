@@ -33,29 +33,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useAuth } from "@/components/auth/AuthProvider";
 
- interface UserProfile {
-  user_id: string;
-  display_name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-  department: string | null;
-  employee_id: string | null;
-  created_at: string;
+interface User {
+  id: string;
   email: string;
-  role: string;
+  full_name: string;
+  phone: string | null;
+  role: 'superadmin' | 'admin' | 'user';
+  status: 'pending' | 'active' | 'suspended';
+  company_id: string;
+  created_at: string;
 }
 
 interface Surveyor {
   id: string;
   name: string;
+  email: string | null;
+  phone: string | null;
   created_at: string;
   is_active: boolean;
 }
 
 export const TeamManagement = () => {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     type: 'toggle' | 'role';
@@ -64,97 +66,82 @@ export const TeamManagement = () => {
     currentRole?: string;
   }>({ open: false, type: 'toggle' });
 
-  // Fetch users with profiles and roles
+  // Fetch users in the same company
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['team-users'],
     queryFn: async () => {
-      // Fetch all user roles
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role, created_at');
-      
-      if (rolesError) throw rolesError;
-
-      // Fetch all profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*');
-      
-      if (profilesError) throw profilesError;
-
-      // Fetch all user emails using the database function
-      // Fetch all user emails using the database function
-      const { data: emails, error: emailsError } = await supabase
-        .rpc('get_all_user_emails');
-      
-      if (emailsError) {
-        console.error('Error fetching emails:', emailsError);
-        toast.error('Failed to fetch emails: ' + emailsError.message);
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
       }
-      
-      console.log('Emails fetched:', emails);
 
-      // Create a union of all unique user_ids
-      const allUserIds = new Set<string>([
-        ...(roles?.map(r => r.user_id).filter((id): id is string => !!id) || []),
-        ...(profiles?.map(p => p.user_id).filter((id): id is string => !!id) || [])
-      ]);
+      // Get current user's company
+      const { data: currentUserData, error: userError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', currentUser.id)
+        .single();
 
-      // Combine data for each user
-      const combined = Array.from(allUserIds).map(userId => {
-        const userRole = roles?.find(r => r.user_id === userId);
-        const userProfile = profiles?.find(p => p.user_id === userId);
-        const userEmail = emails?.find(e => e.user_id === userId);
-        
-        const displayName = userProfile?.display_name 
-          || userProfile?.first_name 
-          || userEmail?.email?.split('@')[0]
-          || `user-${userId.substring(0, 8)}`;
+      if (userError) throw userError;
 
-        return {
-          user_id: userId,
-          display_name: displayName,
-          first_name: userProfile?.first_name || null,
-          last_name: userProfile?.last_name || null,
-          phone: userProfile?.phone || null,
-          department: userProfile?.department || null,
-          employee_id: userProfile?.employee_id || null,
-          created_at: userProfile?.created_at || userRole?.created_at || new Date().toISOString(),
-          email: userEmail?.email || 'No email',
-          role: userRole?.role || 'user'
-        };
-      });
-      
-      return combined;
-    },
-  });
+      if (!currentUserData?.company_id) {
+        throw new Error('No company found for current user');
+      }
 
-  // Fetch surveyors
-  const { data: surveyors = [], isLoading: surveyorsLoading } = useQuery({
-    queryKey: ['surveyors'],
-    queryFn: async () => {
+      // Fetch all users in the same company
       const { data, error } = await supabase
-        .from('surveyors')
-        .select('*');
+        .from('users')
+        .select('*')
+        .eq('company_id', currentUserData.company_id)
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      // Sort alphabetically by name on the frontend
-      const sorted = (data as Surveyor[]).sort((a, b) => 
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-      );
-      
-      return sorted;
+      return data as User[];
     },
+    enabled: !!currentUser?.id, // Only run query if user is logged in
+  });
+
+  // Fetch surveyors in the same company
+  const { data: surveyors = [], isLoading: surveyorsLoading } = useQuery({
+    queryKey: ['surveyors'],
+    queryFn: async () => {
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      // Get current user's company
+      const { data: currentUserData, error: userError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', currentUser.id)
+        .single();
+
+      if (userError) throw userError;
+
+      if (!currentUserData?.company_id) {
+        throw new Error('No company found for current user');
+      }
+
+      const { data, error } = await supabase
+        .from('surveyors')
+        .select('*')
+        .eq('company_id', currentUserData.company_id)
+        .order('name');
+      
+      if (error) throw error;
+      
+      return data as Surveyor[];
+    },
+    enabled: !!currentUser?.id, // Only run query if user is logged in
   });
 
   // Toggle user role mutation
   const toggleRoleMutation = useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: string }) => {
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'user' }) => {
       const { error } = await supabase
-        .from('user_roles')
+        .from('users')
         .update({ role: newRole })
-        .eq('user_id', userId);
+        .eq('id', userId);
       
       if (error) throw error;
     },
@@ -167,7 +154,6 @@ export const TeamManagement = () => {
     },
   });
 
-  // Toggle surveyor active status
   // Toggle surveyor active status
   const toggleSurveyorMutation = useMutation({
     mutationFn: async ({ surveyorId, isActive }: { surveyorId: string; isActive: boolean }) => {
@@ -201,13 +187,30 @@ export const TeamManagement = () => {
   const confirmRoleChange = () => {
     if (confirmDialog.userId && confirmDialog.currentRole) {
       const newRole = confirmDialog.currentRole === 'admin' ? 'user' : 'admin';
-      toggleRoleMutation.mutate({ userId: confirmDialog.userId, newRole });
+      toggleRoleMutation.mutate({ userId: confirmDialog.userId, newRole: newRole as 'admin' | 'user' });
     }
     setConfirmDialog({ open: false, type: 'toggle' });
   };
 
   const handleSurveyorToggle = (surveyorId: string, isActive: boolean) => {
     toggleSurveyorMutation.mutate({ surveyorId, isActive });
+  };
+
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'admin': return 'bg-blue-600';
+      case 'superadmin': return 'bg-purple-600';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-600';
+      case 'pending': return 'bg-yellow-600';
+      case 'suspended': return 'bg-red-600';
+      default: return 'bg-gray-500';
+    }
   };
 
   return (
@@ -253,49 +256,58 @@ export const TeamManagement = () => {
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Joined</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {users.map((user) => (
-                      <TableRow key={user.user_id}>
+                      <TableRow key={user.id}>
                         <TableCell className="font-medium">
-                          {user.display_name || user.first_name || 'N/A'}
+                          {user.full_name || 'N/A'}
                         </TableCell>
                         <TableCell>
                           {user.email}
                         </TableCell>
                         <TableCell>
                           <Badge 
-                            variant={user.role === 'admin' ? 'default' : 'secondary'}
-                            className={user.role === 'admin' ? 'bg-blue-600' : ''}
+                            className={getRoleBadgeColor(user.role) + ' text-white'}
                           >
                             {user.role}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                          <Badge 
+                            className={getStatusBadgeColor(user.status) + ' text-white'}
+                          >
+                            {user.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(user.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRoleToggle(user.user_id, user.role)}
-                            className="gap-2"
-                          >
-                            {user.role === 'admin' ? (
-                              <>
-                                <ShieldOff className="w-4 h-4" />
-                                Remove Admin
-                              </>
-                            ) : (
-                              <>
-                                <Shield className="w-4 h-4" />
-                                Make Admin
-                              </>
-                            )}
-                          </Button>
+                          {user.role !== 'superadmin' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRoleToggle(user.id, user.role)}
+                              className="gap-2"
+                            >
+                              {user.role === 'admin' ? (
+                                <>
+                                  <ShieldOff className="w-4 h-4" />
+                                  Remove Admin
+                                </>
+                              ) : (
+                                <>
+                                  <Shield className="w-4 h-4" />
+                                  Make Admin
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -325,10 +337,11 @@ export const TeamManagement = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[40%]">Name</TableHead>
-                      <TableHead className="w-[20%]">Status</TableHead>
-                      <TableHead className="w-[20%]">Created</TableHead>
-                      <TableHead className="text-right w-[20%]">Actions</TableHead>
+                      <TableHead className="w-[30%]">Name</TableHead>
+                      <TableHead className="w-[25%]">Email</TableHead>
+                      <TableHead className="w-[15%]">Status</TableHead>
+                      <TableHead className="w-[15%]">Created</TableHead>
+                      <TableHead className="text-right w-[15%]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -336,6 +349,9 @@ export const TeamManagement = () => {
                       <TableRow key={surveyor.id}>
                         <TableCell className="font-medium">
                           {surveyor.name}
+                        </TableCell>
+                        <TableCell>
+                          {surveyor.email || 'N/A'}
                         </TableCell>
                         <TableCell>
                           <Badge 

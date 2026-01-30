@@ -45,13 +45,31 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('role, status')
+        .select('role, status, company_id')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // Changed from .single() to .maybeSingle()
       
       if (error) {
         console.error('Error fetching user role:', error);
         setUserRole('user');
+        return;
+      }
+
+      if (!data) {
+        console.log('No user profile found - user may need to complete signup');
+        setUserRole(null);
+        return;
+      }
+
+      if (data.status === 'pending') {
+        console.log('User is pending approval');
+        setUserRole(null);
+        return;
+      }
+
+      if (data.status === 'suspended') {
+        console.log('User is suspended');
+        setUserRole(null);
         return;
       }
 
@@ -63,7 +81,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       setUserRole((data.role as UserRole) || 'user');
     } catch (error) {
-      console.error('Error fetching user role:', error);
+      console.error('Unexpected error fetching user role:', error);
       setUserRole('user');
     }
   };

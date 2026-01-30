@@ -7,25 +7,92 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Edit, Plus, Settings } from "lucide-react";
-import { usePolicyTypes } from "@/hooks/useClaims";
+import { Trash2, Edit, Plus, Settings, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface PolicyType {
   id: string;
+  company_id: string;
   name: string;
-  description: string;
-  fields: any[];
-  parent_id?: string;
+  code: string | null;
+  description: string | null;
+  parent_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  companies?: {
+    name: string;
+  };
 }
 
 export const PolicyTypesManager = () => {
-  const { data: policyTypes, isLoading, refetch } = usePolicyTypes();
+  const { user, isSuperadmin, isAdmin } = useAuth();
+  const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<PolicyType | null>(null);
-  const [newType, setNewType] = useState({ name: "", description: "", parent_id: "" });
+  const [newType, setNewType] = useState({ name: "", code: "", description: "", parent_id: "", company_id: "" });
   const [loading, setLoading] = useState(false);
+
+  // Fetch companies (for superadmin)
+  const { data: companies } = useQuery({
+    queryKey: ["all-companies"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name")
+        .order("name");
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: isSuperadmin,
+  });
+
+  // Fetch policy types based on role
+  const { data: policyTypes, isLoading } = useQuery({
+    queryKey: ["policy-types", isSuperadmin ? "all" : "company"],
+    queryFn: async () => {
+      if (!user?.id) throw new Error("User not authenticated");
+
+      if (isSuperadmin) {
+        // Superadmin: Fetch ALL policy types from ALL companies
+        const { data, error } = await supabase
+          .from("policy_types")
+          .select(`
+            *,
+            companies (
+              name
+            )
+          `)
+          .order("name");
+
+        if (error) throw error;
+        return data as PolicyType[];
+      } else {
+        // Admin: Fetch only their company's policy types
+        const { data: userData } = await supabase
+          .from('users')
+          .select('company_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!userData?.company_id) throw new Error('No company found');
+
+        const { data, error } = await supabase
+          .from("policy_types")
+          .select("*")
+          .eq('company_id', userData.company_id)
+          .order("name");
+
+        if (error) throw error;
+        return data as PolicyType[];
+      }
+    },
+    enabled: !!user?.id && (isSuperadmin || isAdmin),
+  });
 
   // Group policy types by parent
   const mainPolicyTypes = policyTypes?.filter(pt => !pt.parent_id) || [];
@@ -40,21 +107,42 @@ export const PolicyTypesManager = () => {
 
     setLoading(true);
     try {
+      let targetCompanyId = newType.company_id;
+
+      // If admin, use their company_id (ignore selection)
+      if (!isSuperadmin) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('company_id')
+          .eq('id', user?.id)
+          .single();
+
+        if (!userData?.company_id) {
+          throw new Error("No company associated with your account");
+        }
+        targetCompanyId = userData.company_id;
+      } else if (!targetCompanyId) {
+        toast.error("Please select a company");
+        return;
+      }
+
       const { error } = await supabase
         .from("policy_types")
         .insert({
+          company_id: targetCompanyId,
           name: newType.name,
-          description: newType.description,
+          code: newType.code || null,
+          description: newType.description || null,
           parent_id: newType.parent_id || null,
-          fields: []
+          is_active: true
         });
 
       if (error) throw error;
 
       toast.success("Policy type added successfully");
-      setNewType({ name: "", description: "", parent_id: "" });
+      setNewType({ name: "", code: "", description: "", parent_id: "", company_id: "" });
       setIsAddDialogOpen(false);
-      refetch();
+      queryClient.invalidateQueries({ queryKey: ["policy-types"] });
     } catch (error) {
       toast.error("Failed to add policy type");
       console.error(error);
@@ -68,15 +156,16 @@ export const PolicyTypesManager = () => {
 
     setLoading(true);
     try {
+      // Soft delete by setting is_active to false
       const { error } = await supabase
         .from("policy_types")
-        .delete()
+        .update({ is_active: false })
         .eq("id", id);
 
       if (error) throw error;
 
       toast.success("Policy type deleted successfully");
-      refetch();
+      queryClient.invalidateQueries({ queryKey: ["policy-types"] });
     } catch (error) {
       toast.error("Failed to delete policy type");
       console.error(error);
@@ -94,7 +183,8 @@ export const PolicyTypesManager = () => {
         .from("policy_types")
         .update({
           name: editingType.name,
-          description: editingType.description,
+          code: editingType.code || null,
+          description: editingType.description || null,
           parent_id: editingType.parent_id || null
         })
         .eq("id", editingType.id);
@@ -103,7 +193,7 @@ export const PolicyTypesManager = () => {
 
       toast.success("Policy type updated successfully");
       setEditingType(null);
-      refetch();
+      queryClient.invalidateQueries({ queryKey: ["policy-types"] });
     } catch (error) {
       toast.error("Failed to update policy type");
       console.error(error);
@@ -111,6 +201,17 @@ export const PolicyTypesManager = () => {
       setLoading(false);
     }
   };
+
+  // Check if user has access
+  if (!isSuperadmin && !isAdmin) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <p className="text-muted-foreground">You don't have permission to manage policy types.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -138,9 +239,12 @@ export const PolicyTypesManager = () => {
             <CardTitle className="flex items-center gap-2">
               <Settings className="w-5 h-5" />
               Policy Types Management
+              {isSuperadmin && <Badge variant="secondary">Superadmin</Badge>}
             </CardTitle>
             <CardDescription>
-              Manage insurance policy types and their subtypes
+              {isSuperadmin 
+                ? "Manage policy types across all companies" 
+                : "Manage your company's policy types"}
             </CardDescription>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -158,13 +262,42 @@ export const PolicyTypesManager = () => {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
+                {/* Company selector - only for superadmin */}
+                {isSuperadmin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="company">Company *</Label>
+                    <select
+                      id="company"
+                      value={newType.company_id}
+                      onChange={(e) => setNewType(prev => ({ ...prev, company_id: e.target.value }))}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Select a company...</option>
+                      {companies?.map((company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">Name *</Label>
                   <Input
                     id="name"
                     value={newType.name}
                     onChange={(e) => setNewType(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Container, Property"
+                    placeholder="e.g., Marine Cargo, Fire"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="code">Code</Label>
+                  <Input
+                    id="code"
+                    value={newType.code}
+                    onChange={(e) => setNewType(prev => ({ ...prev, code: e.target.value }))}
+                    placeholder="e.g., MARINE, FIRE"
                   />
                 </div>
                 <div className="space-y-2">
@@ -177,19 +310,21 @@ export const PolicyTypesManager = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="parent">Parent Category</Label>
+                  <Label htmlFor="parent">Parent Category (Optional)</Label>
                   <select
                     id="parent"
                     value={newType.parent_id}
                     onChange={(e) => setNewType(prev => ({ ...prev, parent_id: e.target.value }))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="">None (Main Category)</option>
-                    {mainPolicyTypes.map((pt) => (
-                      <option key={pt.id} value={pt.id}>
-                        {pt.name}
-                      </option>
-                    ))}
+                    {mainPolicyTypes
+                      .filter(pt => isSuperadmin ? pt.company_id === newType.company_id : true)
+                      .map((pt) => (
+                        <option key={pt.id} value={pt.id}>
+                          {pt.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div className="flex justify-end gap-2">
@@ -216,9 +351,20 @@ export const PolicyTypesManager = () => {
               <Card key={mainType.id} className="border-2">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-lg">{mainType.name}</h3>
-                      <p className="text-sm text-muted-foreground">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-lg">{mainType.name}</h3>
+                        {mainType.code && (
+                          <Badge variant="outline">{mainType.code}</Badge>
+                        )}
+                        {isSuperadmin && mainType.companies && (
+                          <Badge variant="secondary" className="ml-2">
+                            <Building2 className="w-3 h-3 mr-1" />
+                            {mainType.companies.name}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
                         {mainType.description}
                       </p>
                     </div>
@@ -248,13 +394,15 @@ export const PolicyTypesManager = () => {
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between">
                             <div>
-                              <h4 className="font-medium text-sm">{subtype.name}</h4>
-                              <p className="text-xs text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-sm">{subtype.name}</h4>
+                                {subtype.code && (
+                                  <Badge variant="secondary" className="text-xs">{subtype.code}</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
                                 {subtype.description}
                               </p>
-                              <Badge variant="secondary" className="text-xs mt-1">
-                                {subtype.fields?.length || 0} fields
-                              </Badge>
                             </div>
                             <div className="flex gap-1">
                               <Button
@@ -290,7 +438,7 @@ export const PolicyTypesManager = () => {
           </Alert>
         )}
 
-        {/* Edit Dialog */}
+        {/* Edit Dialog - same as before, no changes needed */}
         <Dialog open={!!editingType} onOpenChange={() => setEditingType(null)}>
           <DialogContent>
             <DialogHeader>
@@ -302,11 +450,19 @@ export const PolicyTypesManager = () => {
             {editingType && (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-name">Name</Label>
+                  <Label htmlFor="edit-name">Name *</Label>
                   <Input
                     id="edit-name"
                     value={editingType.name}
                     onChange={(e) => setEditingType(prev => prev ? { ...prev, name: e.target.value } : null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-code">Code</Label>
+                  <Input
+                    id="edit-code"
+                    value={editingType.code || ""}
+                    onChange={(e) => setEditingType(prev => prev ? { ...prev, code: e.target.value } : null)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -322,12 +478,12 @@ export const PolicyTypesManager = () => {
                   <select
                     id="edit-parent"
                     value={editingType.parent_id || ""}
-                    onChange={(e) => setEditingType(prev => prev ? { ...prev, parent_id: e.target.value || undefined } : null)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    onChange={(e) => setEditingType(prev => prev ? { ...prev, parent_id: e.target.value || null } : null)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option value="">None (Main Category)</option>
                     {mainPolicyTypes
-                      .filter(pt => pt.id !== editingType?.id) // Don't allow self-reference
+                      .filter(pt => pt.id !== editingType?.id && pt.company_id === editingType?.company_id)
                       .map((pt) => (
                         <option key={pt.id} value={pt.id}>
                           {pt.name}

@@ -120,139 +120,137 @@ useEffect(() => {
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validation
-    if (!signUpData.email || !signUpData.password || !signUpData.confirmPassword || !signUpData.displayName || !signUpData.companyId) {
-      toast.error("Please fill in all required fields");
-      return;
+  e.preventDefault();
+  
+  // Validation
+  if (!signUpData.email || !signUpData.password || !signUpData.confirmPassword || !signUpData.displayName || !signUpData.companyId) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
+
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(signUpData.email)) {
+    toast.error("Please enter a valid email address");
+    return;
+  }
+
+  if (signUpData.password !== signUpData.confirmPassword) {
+    toast.error("Passwords do not match");
+    return;
+  }
+
+  if (signUpData.password.length < 8) {
+    toast.error("Password must be at least 8 characters long");
+    return;
+  }
+
+  // Password strength check
+  const hasUpperCase = /[A-Z]/.test(signUpData.password);
+  const hasLowerCase = /[a-z]/.test(signUpData.password);
+  const hasNumber = /[0-9]/.test(signUpData.password);
+  
+  if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+    toast.error("Password must contain uppercase, lowercase, and numbers");
+    return;
+  }
+
+  setIsSubmitting(true);
+
+  try {
+    // Step 1: Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: signUpData.email,
+      password: signUpData.password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+        data: {
+          display_name: signUpData.displayName,
+        }
+      },
+    });
+
+    if (authError) {
+      if (authError.message.includes('already registered')) {
+        throw new Error('This email is already registered');
+      }
+      throw authError;
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(signUpData.email)) {
-      toast.error("Please enter a valid email address");
-      return;
+    if (!authData.user) {
+      throw new Error('Failed to create account');
     }
 
-    if (signUpData.password !== signUpData.confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
+    // Step 2: Wait a moment for auth user to be fully created
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    if (signUpData.password.length < 8) {
-      toast.error("Password must be at least 8 characters long");
-      return;
-    }
-
-    // Password strength check
-    const hasUpperCase = /[A-Z]/.test(signUpData.password);
-    const hasLowerCase = /[a-z]/.test(signUpData.password);
-    const hasNumber = /[0-9]/.test(signUpData.password);
-    
-    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
-      toast.error("Password must contain uppercase, lowercase, and numbers");
-      return;
-    }
-
-    setIsSubmitting(true);
-    let authUserId: string | null = null;
-
-    try {
-      // Step 1: Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+    // Step 3: Create user record
+    const { error: userError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
         email: signUpData.email,
-        password: signUpData.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            display_name: signUpData.displayName,
-          }
-        },
+        full_name: signUpData.displayName,
+        phone: signUpData.phone || null,
+        company_id: signUpData.companyId,
+        role: 'user',
+        status: 'pending'
       });
-
-      if (authError) {
-        if (authError.message.includes('already registered')) {
-          throw new Error('This email is already registered');
-        }
-        throw authError;
-      }
-
-      if (!authData.user) {
-        throw new Error('Failed to create account');
-      }
-
-      authUserId = authData.user.id;
-
-      // Step 2: Create user record
-      const { error: userError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: signUpData.email,
-          full_name: signUpData.displayName,
-          phone: signUpData.phone || null,
-          company_id: signUpData.companyId,
-          role: 'user',
-          status: 'pending'
-        });
+    
+    if (userError) {
+      console.error('User creation error:', userError);
       
-      if (userError) {
-        console.error('User creation error:', userError);
-        throw new Error('Failed to create user profile');
-      }
-
-      // Step 3: Create pending request
-      const { error: requestError } = await supabase
-        .from('pending_user_requests')
-        .insert({
-          user_id: authData.user.id,
-          company_id: signUpData.companyId,
-          status: 'pending'
-        });
-
-      if (requestError) {
-        console.error('Request creation error:', requestError);
-        // Non-critical error, continue
-      }
-
-      // Success
-      toast.success(
-        "Account created successfully! Your request has been sent to the company administrator for approval.",
-        { duration: 6000 }
+      // If profile creation fails, provide helpful message
+      toast.error(
+        "Account created but profile setup incomplete. Please contact support with email: " + signUpData.email,
+        { duration: 8000 }
       );
-
-      // Sign out the user (they need approval first)
+      
+      // Sign out the user since profile is incomplete
       await supabase.auth.signOut();
+      return;
+    }
 
-      // Reset form
-      setSignUpData({
-        email: "",
-        password: "",
-        confirmPassword: "",
-        displayName: "",
-        phone: "",
-        companyId: "",
+    // Step 4: Create pending request
+    const { error: requestError } = await supabase
+      .from('pending_user_requests')
+      .insert({
+        user_id: authData.user.id,
+        company_id: signUpData.companyId,
+        status: 'pending'
       });
 
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      toast.error(errorMessage);
-
-      // Rollback: Delete auth user if created
-      if (authUserId) {
-        try {
-          // Note: Supabase doesn't allow direct user deletion via client
-          // You'll need an admin function for this, or accept orphaned auth users
-          console.error('Auth user created but profile failed. User ID:', authUserId);
-        } catch (cleanupError) {
-          console.error('Cleanup error:', cleanupError);
-        }
-      }
-    } finally {
-      setIsSubmitting(false);
+    if (requestError) {
+      console.error('Request creation error:', requestError);
+      // Non-critical, continue
     }
-  };
+
+    // Success
+    toast.success(
+      "Account created successfully! Your request has been sent to the company administrator for approval.",
+      { duration: 6000 }
+    );
+
+    // Sign out (they need approval first)
+    await supabase.auth.signOut();
+
+    // Reset form
+    setSignUpData({
+      email: "",
+      password: "",
+      confirmPassword: "",
+      displayName: "",
+      phone: "",
+      companyId: "",
+    });
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    toast.error(errorMessage);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">

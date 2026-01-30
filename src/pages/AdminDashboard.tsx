@@ -1,22 +1,17 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   FileText, 
-  Users, 
+  Users,
+  DollarSign,
   TrendingUp,
-  ArrowUpRight,
-  ArrowDownRight,
+  Calendar,
   Clock,
-  IndianRupee,
-  IndianRupeeIcon, // if you need different naming, adjust accordingly
-  Link         // keep the icon if you still use it somewhere
+  CheckCircle,
+  AlertCircle
 } from "lucide-react";
-
-import { Link as RouterLink } from "react-router-dom"; // use the router Link
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
-import { useClaims } from "@/hooks/useClaims";
 import { 
   LineChart, 
   Line, 
@@ -25,106 +20,122 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
+  BarChart,
+  Bar,
   PieChart,
   Pie,
   Cell,
   Legend
 } from "recharts";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { Link } from "react-router-dom";
+import { useAuth } from "@/components/auth/AuthProvider";
 
-/**
- * Interface for statistics card data
- */
 interface StatCard {
   title: string;
   value: string | number;
   change: string;
-  isPositive: boolean;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   iconBgColor: string;
 }
 
-/**
- * Interface for monthly data
- */
-interface MonthlyData {
-  month: string;
-  revenue: number;
-  claims: number;
-}
-
-/**
- * Colors for the pie chart
- */
 const COLORS = {
-  pending: 'rgb(37, 99, 235)',     // Blue
-  submitted: 'rgb(245, 158, 11)',  // Orange
-  under_review: 'rgb(59, 130, 246)', // Blue
-  approved: 'rgb(16, 185, 129)',   // Green
-  rejected: 'rgb(239, 68, 68)',    // Red
-  paid: 'rgb(16, 185, 129)',       // Green
+  pending: 'rgb(37, 99, 235)',
+  submitted: 'rgb(245, 158, 11)',
+  under_review: 'rgb(59, 130, 246)',
+  approved: 'rgb(16, 185, 129)',
+  rejected: 'rgb(239, 68, 68)',
+  closed: 'rgb(107, 114, 128)',
 };
 
-
-/**
- * Dashboard Component
- * 
- * This is the main overview dashboard that displays REAL DATA from Supabase:
- * 1. Total claims count (from claims table)
- * 2. Monthly revenue (calculated from claim_amount)
- * 3. Active surveyors count (from claims with surveyor_name)
- * 4. Completion rate (approved + paid / total claims)
- * 5. Revenue & Claims Trend (last 6 months data)
- * 6. Claim Status Distribution (actual status counts)
- * 7. Recent claims activity (latest claims)
- * 
- * Data Flow:
- * - All data fetched from Supabase using React Query
- * - Real-time calculations based on actual database data
- * - No dummy/mock data used
- */
 export const AdminDashboard = () => {
-  const { data: claims = [], isLoading: claimsLoading } = useClaims();
-  console.log('[Dashboard] claims sample:', claims?.slice?.(0,3));
+  const { user } = useAuth();
 
+  // Fetch claims for the company
+  const { data: claims = [], isLoading: claimsLoading } = useQuery({
+    queryKey: ['admin-claims'],
+    queryFn: async () => {
+      console.log('[Dashboard] Fetching claims...');
+      
+      // Get user's company
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user?.id)
+        .single();
 
-/**
- * Fetch total surveys assigned to this admin
- * Counts claims where the admin is the assigned user
- */
-const { data: totalSurveys, isLoading: surveysLoading } = useQuery({
-  queryKey: ['admin-surveys'],
-  queryFn: async () => {
-    // Get current user ID
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return 0;
+      if (!userData?.company_id) {
+        throw new Error('No company found');
+      }
 
-    // Count claims assigned to this admin
-    const { count, error } = await supabase
-      .from('claims')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id);
+      const { data, error } = await supabase
+        .from('claims')
+        .select('*')
+        .eq('company_id', userData.company_id)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('[Dashboard] Error fetching claims:', error);
+        throw error;
+      }
+      
+      console.log('[Dashboard] Fetched claims:', data?.length);
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
 
-    if (error) {
-      console.error('[Dashboard] Error fetching admin surveys:', error);
-      throw error;
-    }
+  // Fetch users in company
+  const { data: users = [] } = useQuery({
+    queryKey: ['company-users'],
+    queryFn: async () => {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user?.id)
+        .single();
 
-    return count || 0;
-  }
-});
+      if (!userData?.company_id) return [];
 
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('company_id', userData.company_id);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
 
-  /**
-   * Calculate monthly trend data from actual claims
-   * Groups claims by month and calculates revenue
-   */
-  const monthlyTrendData: MonthlyData[] = useMemo(() => {
+  // Fetch surveyors in company
+  const { data: surveyors = [] } = useQuery({
+    queryKey: ['company-surveyors'],
+    queryFn: async () => {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user?.id)
+        .single();
+
+      if (!userData?.company_id) return [];
+
+      const { data, error } = await supabase
+        .from('surveyors')
+        .select('*')
+        .eq('company_id', userData.company_id);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+
+  // Calculate monthly trend data
+  const monthlyTrendData = useMemo(() => {
     if (!claims.length) return [];
 
-    // Get last 6 months
     const months = Array.from({ length: 6 }, (_, i) => {
       const date = subMonths(new Date(), 5 - i);
       return {
@@ -147,328 +158,237 @@ const { data: totalSurveys, isLoading: surveysLoading } = useQuery({
 
       return {
         month,
-        revenue,
-        claims: monthClaims.length
+        claims: monthClaims.length,
+        revenue: revenue / 1000 // Convert to thousands
       };
     });
   }, [claims]);
 
-  /**
-   * Calculate statistics from real claims data
-   */
+  // Calculate statistics
   const stats = useMemo(() => {
     const totalClaims = claims.length;
-    
-    // Calculate total revenue (sum of all claim amounts)
+    const activeClaims = claims.filter(c => 
+      c.status !== 'approved' && c.status !== 'closed' && c.status !== 'rejected'
+    ).length;
+    const completedClaims = claims.filter(c => 
+      c.status === 'approved' || c.status === 'closed'
+    ).length;
     const totalRevenue = claims.reduce((sum, claim) => 
       sum + (claim.claim_amount || 0), 0
     );
-    
-    // Convert to lakhs (1 lakh = 100,000)
-    const revenueInLakhs = totalRevenue / 100000;
-    
-    // Count approved and paid claims for completion rate
-    const completedClaims = claims.filter(c => 
-      c.status === 'approved' || c.status === 'paid'
-    ).length;
-    
-    const completionRate = totalClaims > 0 
-      ? ((completedClaims / totalClaims) * 100).toFixed(1)
-      : 0;
 
-    // Calculate month-over-month growth
     const currentMonthClaims = monthlyTrendData[monthlyTrendData.length - 1]?.claims || 0;
     const lastMonthClaims = monthlyTrendData[monthlyTrendData.length - 2]?.claims || 0;
     const claimsGrowth = lastMonthClaims > 0
       ? (((currentMonthClaims - lastMonthClaims) / lastMonthClaims) * 100).toFixed(1)
       : 0;
 
-    const currentMonthRevenue = monthlyTrendData[monthlyTrendData.length - 1]?.revenue || 0;
-    const lastMonthRevenue = monthlyTrendData[monthlyTrendData.length - 2]?.revenue || 0;
-    const revenueGrowth = lastMonthRevenue > 0
-      ? (((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100).toFixed(1)
-      : 0;
-
     return {
       totalClaims,
-      revenueInLakhs,
-      totalSurveys: totalSurveys || 0,
-      completionRate,
+      activeClaims,
+      completedClaims,
+      totalRevenue,
       claimsGrowth: Number(claimsGrowth),
-      revenueGrowth: Number(revenueGrowth),
+      activeUsers: users.filter(u => u.status === 'active').length,
+      activeSurveyors: surveyors.filter(s => s.is_active).length,
     };
-  }, [claims, monthlyTrendData, totalSurveys]);
+  }, [claims, users, surveyors, monthlyTrendData]);
 
-  /**
-   * Prepare data for status distribution pie chart
-   * Uses actual status counts from database
-   */
+  // Status distribution
   const statusDistribution = useMemo(() => {
-  const statusData = [
-    { 
-      name: 'Approved', 
-      value: claims.filter(c => c.status === 'approved').length,
-      color: COLORS.approved
-    },
-    { 
-      name: 'Paid', 
-      value: claims.filter(c => c.status === 'paid').length,
-      color: COLORS.paid
-    },
-    { 
-      name: 'Pending', 
-      value: claims.filter(c => c.status === 'pending').length,
-      color: COLORS.pending
-    },
-    { 
-      name: 'Submitted', 
-      value: claims.filter(c => c.status === 'submitted').length,
-      color: COLORS.submitted
-    },
-    { 
-      name: 'Under Review', 
-      value: claims.filter(c => c.status === 'under_review').length,
-      color: COLORS.under_review
-    },
-    { 
-      name: 'Rejected', 
-      value: claims.filter(c => c.status === 'rejected').length,
-      color: COLORS.rejected
-    },
-  ];
-  
-  return statusData.filter(item => item.value > 0);
-}, [claims]);
-
-  /**
-   * Get recent activity - claims from today
-   */
-  const todayClaims = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const statusData = [
+      { 
+        name: 'Approved', 
+        value: claims.filter(c => c.status === 'approved').length,
+        color: COLORS.approved
+      },
+      { 
+        name: 'Pending', 
+        value: claims.filter(c => c.status === 'under_review' || c.status === 'draft').length,
+        color: COLORS.pending
+      },
+      { 
+        name: 'Submitted', 
+        value: claims.filter(c => c.status === 'submitted').length,
+        color: COLORS.submitted
+      },
+      { 
+        name: 'Under Review', 
+        value: claims.filter(c => c.status === 'under_review').length,
+        color: COLORS.under_review
+      },
+      { 
+        name: 'Rejected', 
+        value: claims.filter(c => c.status === 'rejected').length,
+        color: COLORS.rejected
+      },
+      { 
+        name: 'Closed', 
+        value: claims.filter(c => c.status === 'closed').length,
+        color: COLORS.closed
+      },
+    ];
     
-    return claims.filter(claim => {
-      const claimDate = new Date(claim.created_at);
-      claimDate.setHours(0, 0, 0, 0);
-      return claimDate.getTime() === today.getTime();
-    });
+    return statusData.filter(item => item.value > 0);
   }, [claims]);
 
-  /**
-   * Count claims needing review (submitted or under_review status)
-   */
-  const reviewCount = useMemo(() => {
-    return claims.filter(c => 
-      c.status === 'submitted' || c.status === 'under_review'
-    ).length;
+  // Recent claims
+  const recentClaims = useMemo(() => {
+    return [...claims]
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 5);
   }, [claims]);
 
-  /**
-   * Get recent surveyors (unique surveyors from last 7 days)
-   */
-  const surveyorsThisWeek = useMemo(() => {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    const recentClaims = claims.filter(claim => 
-      new Date(claim.created_at) >= sevenDaysAgo && claim.surveyor_name
-    );
-    
-    const uniqueSurveyors = [...new Set(recentClaims.map(c => c.surveyor_name))];
-    return uniqueSurveyors.length;
-  }, [claims]);
-
-  /**
-   * Stat cards configuration with real data
-   */
   const statCards: StatCard[] = [
     {
-      title: 'All Claims',
+      title: 'Total Claims',
       value: stats.totalClaims.toLocaleString(),
       change: `${stats.claimsGrowth >= 0 ? '+' : ''}${stats.claimsGrowth}% from last month`,
-      isPositive: stats.claimsGrowth >= 0,
-      description: 'Active insurance claims',
+      description: 'All claims in the system',
       icon: FileText,
       iconBgColor: 'bg-blue-100 text-blue-600',
     },
     {
-      title: 'Total Revenue',
-      value: stats.revenueInLakhs > 0 ? `₹${stats.revenueInLakhs.toFixed(1)}L` : '₹0',
-      change: `${stats.revenueGrowth >= 0 ? '+' : ''}${stats.revenueGrowth}% from last month`,
-      isPositive: stats.revenueGrowth >= 0,
-      description: 'Total claim amounts',
-      icon: IndianRupeeIcon,
+      title: 'Active Claims',
+      value: stats.activeClaims.toLocaleString(),
+      change: `${stats.completedClaims} completed`,
+      description: 'In progress claims',
+      icon: Clock,
+      iconBgColor: 'bg-yellow-100 text-yellow-600',
+    },
+    {
+      title: 'Team Members',
+      value: stats.activeUsers,
+      change: `${stats.activeSurveyors} surveyors`,
+      description: 'Active users in system',
+      icon: Users,
       iconBgColor: 'bg-green-100 text-green-600',
     },
     {
-    title: 'Total Surveys',
-    value: stats.totalSurveys,
-    change: `${surveyorsThisWeek} assigned this week`,
-    isPositive: true,
-    description: 'Claims assigned to you',
-    icon: Users,
-    iconBgColor: 'bg-purple-100 text-purple-600',
-    },
-    {
-      title: 'Completion Rate',
-      value: `${stats.completionRate}%`,
-      change: 'Approved + paid claims',
-      isPositive: Number(stats.completionRate) >= 50,
-      description: 'Claim completion rate',
-      icon: TrendingUp,
-      iconBgColor: 'bg-orange-100 text-orange-600',
+      title: 'Total Value',
+      value: `₹${(stats.totalRevenue / 100000).toFixed(1)}L`,
+      change: 'Total claim amount',
+      description: 'All time value',
+      icon: DollarSign,
+      iconBgColor: 'bg-purple-100 text-purple-600',
     },
   ];
 
-  if (claimsLoading || surveysLoading) {
+  if (claimsLoading) {
     return (
       <div className="p-8">
         <div className="animate-pulse space-y-6">
           <div className="h-8 bg-gray-200 rounded w-64"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[Array(4)].map((_, i) => (
+            {[...Array(4)].map((_, i) => (
               <div key={i} className="h-32 bg-gray-200 rounded"></div>
             ))}
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 h-80 bg-gray-200 rounded"></div>
-            <div className="h-80 bg-gray-200 rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show message if no data
-  if (claims.length === 0) {
-    return (
-      <div className="p-8">
-        <div className="text-center py-12">
-          <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Claims Yet</h3>
-          <p className="text-gray-600">
-            Create your first claim to see dashboard statistics and analytics.
-          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-8 bg-gray-50">
-      {/* Statistics Cards Grid */}
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-gray-600 mt-1">
+          Welcome back! Here's what's happening with your company.
+        </p>
+      </div>
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat, index) => (
-          <Card key={index} className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-600 mb-2">
-                    {stat.title}
-                  </p>
-                  <h3 className="text-3xl font-bold text-gray-900 mb-1">
-                    {stat.value}
-                  </h3>
-                  <div className="flex items-center gap-1 text-sm">
-                    {stat.isPositive ? (
-                      <ArrowUpRight className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <ArrowDownRight className="w-4 h-4 text-red-600" />
-                    )}
-                    <span className={stat.isPositive ? 'text-green-600' : 'text-red-600'}>
+        {statCards.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={index} className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-600 mb-1">
+                      {stat.title}
+                    </p>
+                    <div className="flex items-baseline gap-2">
+                      <h3 className="text-3xl font-bold text-gray-900">
+                        {stat.value}
+                      </h3>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
                       {stat.change}
-                    </span>
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {stat.description}
-                  </p>
+                  <div className={`p-3 rounded-lg ${stat.iconBgColor}`}>
+                    <Icon className="w-6 h-6" />
+                  </div>
                 </div>
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${stat.iconBgColor}`}>
-                  <stat.icon className="w-6 h-6" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Revenue & Claims Trend Chart */}
+        {/* Monthly Trend */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <IndianRupee className="w-5 h-5 text-blue-600" />
-              <CardTitle>Revenue & Claims Trend (Last 6 Months)</CardTitle>
-            </div>
+            <CardTitle>Claims & Revenue Trend</CardTitle>
           </CardHeader>
           <CardContent>
             {monthlyTrendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={monthlyTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="#6b7280"
-                    style={{ fontSize: '12px' }}
-                  />
-                  <YAxis 
-                    stroke="#6b7280"
-                    style={{ fontSize: '12px' }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px'
-                    }}
-                    formatter={(value: number, name: string) => {
-                      if (name === 'revenue') {
-                        return [`₹${(value / 100000).toFixed(2)}L`, 'Revenue'];
-                      }
-                      return [value, 'Claims'];
-                    }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis yAxisId="left" />
+                  <YAxis yAxisId="right" orientation="right" />
+                  <Tooltip />
+                  <Legend />
                   <Line 
+                    yAxisId="left"
                     type="monotone" 
-                    dataKey="revenue" 
+                    dataKey="claims" 
                     stroke="#3b82f6" 
                     strokeWidth={2}
-                    dot={{ fill: '#3b82f6', r: 4 }}
-                    activeDot={{ r: 6 }}
-                    name="revenue"
+                    name="Claims"
+                  />
+                  <Line 
+                    yAxisId="right"
+                    type="monotone" 
+                    dataKey="revenue" 
+                    stroke="#10b981" 
+                    strokeWidth={2}
+                    name="Revenue (₹K)"
                   />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-500">
-                Not enough data to display trend
+                No trend data available
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Claim Status Distribution Pie Chart */}
+        {/* Status Distribution */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-600" />
-              <CardTitle>Claim Status</CardTitle>
-            </div>
+            <CardTitle>Status Distribution</CardTitle>
           </CardHeader>
           <CardContent>
             {statusDistribution.length > 0 ? (
               <>
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
                       data={statusDistribution}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={false}
-                      outerRadius={100}
-                      innerRadius={50}
+                      outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
                     >
@@ -476,25 +396,23 @@ const { data: totalSurveys, isLoading: surveysLoading } = useQuery({
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value, name) => [value, name]} />
+                    <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-m">
-                {statusDistribution.map((entry, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-sm" 
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <span className="text-gray-700">
-                      {entry.name}: {entry.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-                
-                {/* Legend */}
-                
+                <div className="mt-4 space-y-2 text-sm">
+                  {statusDistribution.map((entry, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-sm" 
+                          style={{ backgroundColor: entry.color }}
+                        />
+                        <span className="text-gray-700">{entry.name}</span>
+                      </div>
+                      <span className="font-medium">{entry.value}</span>
+                    </div>
+                  ))}
+                </div>
               </>
             ) : (
               <div className="h-[300px] flex items-center justify-center text-gray-500">
@@ -505,103 +423,57 @@ const { data: totalSurveys, isLoading: surveysLoading } = useQuery({
         </Card>
       </div>
 
-      {/* Bottom Row - Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
-              <CardTitle>Quick Stats</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">Created Today</p>
-                <span className="text-2xl font-bold text-green-600">
-                  {todayClaims.length}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-4 bg-yellow-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">Pending Review</p>
-                <span className="text-2xl font-bold text-yellow-600">
-                  {reviewCount}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">This Month</p>
-                <span className="text-2xl font-bold text-blue-600">
-                  {monthlyTrendData[monthlyTrendData.length - 1]?.claims || 0}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity */}
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-blue-600" />
-              <CardTitle>Recent Claims</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {[...claims]
-              // ✅ sort by updated_at (fallback to created_at) using a safe comparator
-              .sort((a, b) => {
-                const aDate = new Date(a.updated_at || a.created_at || 0).getTime();
-                const bDate = new Date(b.updated_at || b.created_at || 0).getTime();
-                return bDate - aDate;
-              })
-              // ✅ take only top 5
-              .slice(0, 5)
-              // ✅ render with correct RouterLink and formatted date
-              .map((claim) => (
-                <RouterLink
-                  key={claim.id}
-                  to={`/claims/${claim.id}`}
-                  className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors mb-2"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{claim.title || 'Untitled claim'}</p>
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Claims</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {recentClaims.map((claim) => (
+              <Link 
+                key={claim.id} 
+                to={`/claims/${claim.id}`}
+                className="flex items-center justify-between p-4 hover:bg-gray-50 rounded-lg transition-colors border"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{claim.claim_number}</p>
                     <p className="text-sm text-gray-500">
-                      {(claim.claim_number || '')} • {claim.updated_at ? format(new Date(claim.updated_at), 'MMM dd, yyyy') : '—'}
+                      {claim.insured_name || 'N/A'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {claim.claim_amount != null && (
-                      <span className="text-sm font-semibold text-gray-900">
-                        ₹{(Number(claim.claim_amount) / 100000).toFixed(2)}L
-                      </span>
-                    )}
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      (claim.status === 'approved' || claim.status === 'paid')
-                        ? 'bg-green-100 text-green-700'
-                        : claim.status === 'rejected'
-                        ? 'bg-red-100 text-red-700'
-                        : claim.status === 'under_review'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {String(claim.status || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                    </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    claim.status === 'approved' || claim.status === 'closed'
+                      ? 'bg-green-100 text-green-700'
+                      : claim.status === 'rejected'
+                      ? 'bg-red-100 text-red-700'
+                      : claim.status === 'under_review'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {claim.status.replace('_', ' ')}
+                  </span>
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Calendar className="w-4 h-4" />
+                    {format(new Date(claim.created_at), 'MMM dd')}
                   </div>
-                </RouterLink>
-              ))}
-            {claims.length === 0 && (
-              <p className="text-center text-gray-500 py-4">No recent claims</p>
+                </div>
+              </Link>
+            ))}
+            {recentClaims.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No recent claims
+              </div>
             )}
-          </CardContent>
-        </Card>
-
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

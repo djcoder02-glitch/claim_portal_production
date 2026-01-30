@@ -53,6 +53,21 @@ export const useClaims = () => {
   });
 };
 
+export const usePolicyTypes = () => {
+  return useQuery({
+    queryKey: ["policy_types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('policy_types')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+};
+
 export const useCreateClaim = () => {
   const queryClient = useQueryClient();
 
@@ -147,6 +162,36 @@ export const useUpdateClaim = () => {
   });
 };
 
+
+export const useUpdateClaimSilent = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: Partial<Claim>;
+    }) => {
+      const { data, error } = await supabase
+        .from("claims")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["claims"] });
+      queryClient.invalidateQueries({ queryKey: ["claim"] });
+      // No toast notification - silent update
+    },
+  });
+};
+
 export const useClaimById = (id: string) => {
   return useQuery({
     queryKey: ["claim", id],
@@ -192,3 +237,4 @@ export const useDeleteClaim = () => {
     },
   });
 };
+
