@@ -38,7 +38,8 @@ interface NavItem {
 /**
  * Main navigation items shown in the left sidebar
  */
-const getMainNavItems = (isAdmin: boolean): NavItem[] => {
+
+const getMainNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] => {
   const baseItems = [
     {
       title: "Dashboard",
@@ -50,7 +51,12 @@ const getMainNavItems = (isAdmin: boolean): NavItem[] => {
       href: "/claims",
       icon: FileText,
     },
-    {
+  ];
+
+  // Add VAS and Clients for superadmin only
+  if (isSuperadmin) {
+    baseItems.push(
+      {
         title: "Value Added Services",
         href: "/value-added-services/reports",
         icon: Star,
@@ -59,12 +65,18 @@ const getMainNavItems = (isAdmin: boolean): NavItem[] => {
         title: "Clients",
         href: "/clients/reports",
         icon: Building2,
-      },
-  ];
+      }
+    );
+  }
 
-  if (isAdmin) {
+  if (isAdmin || isSuperadmin) {
     return [
       ...baseItems,
+      ...(isSuperadmin ? [{
+        title: "Company Management",
+        href: "/company-management",
+        icon: Building2,
+      }] : []),
       {
         title: "Analytics",
         href: "/analytics",
@@ -75,7 +87,6 @@ const getMainNavItems = (isAdmin: boolean): NavItem[] => {
         href: "/settings",
         icon: Settings,
       },
-      
       {
         title: "Management",
         href: "/management",
@@ -84,14 +95,13 @@ const getMainNavItems = (isAdmin: boolean): NavItem[] => {
       {
         title: "Image Generator",
         href: "/image-generator",
-        icon: Image,  // You'll need to import this
+        icon: Image,
       },
     ];
   }
 
   return baseItems;
 };
-
 /**
  * Secondary navigation items (shown under "Other" section)
  */
@@ -227,22 +237,28 @@ const getPageTitle = (pathname: string): { title: string; subtitle: string } => 
 export const DashboardLayout = () => {
   const { isAdmin, user } = useAuth();
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [userStatus, setUserStatus] = useState<string>('user');
+  const [isSuperadmin, setIsSuperadmin] = useState<boolean>(false);
 
 useEffect(() => {
   if (user?.id) {
     supabase
-      .from('profiles')
-      .select('display_name')
-      .eq('user_id', user.id)
+      .from('users')
+      .select('full_name, role, status')
+      .eq('id', user.id)
       .single()
       .then(({ data }) => {
-        if (data?.display_name) {
-          setDisplayName(data.display_name);
+        if (data?.full_name) {
+          setDisplayName(data.full_name);
+        }
+        if (data?.role) {
+          setUserStatus(data.role);
+          setIsSuperadmin(data.role === 'superadmin');
         }
       });
   }
 }, [user?.id]);
-  const mainNavItems = getMainNavItems(isAdmin);
+  const mainNavItems = getMainNavItems(isAdmin, isSuperadmin);
   const otherNavItems = getOtherNavItems(isAdmin);
   const location = useLocation();
   const navigate = useNavigate();
@@ -416,8 +432,8 @@ useEffect(() => {
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {displayName || user?.email?.split('@')[0] || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 truncate">
-                  {user?.email || ''}
+                <p className="text-xs text-gray-500 truncate capitalize">
+                  {userStatus === 'superadmin' ? 'Super Admin' : userStatus === 'admin' ? 'Admin' : 'User'}
                 </p>
               </div>
             </div>
@@ -460,12 +476,12 @@ useEffect(() => {
             {!isCollapsed && <span className="ml-2 text-xs">Collapse</span>}
           </Button>
         </div>
-      </aside>
+        </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Conditional Navbar - Show on all pages except /claims */}
-        { !1 && (
+        { !isClaimsPage && (
           <Navbar 
             title={title}
             subtitle={subtitle}

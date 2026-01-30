@@ -1,449 +1,273 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar,
-  Edit,
-  Target,
-  Award,
-  Activity,
-  Loader2
-} from "lucide-react";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { Loader2, User, Mail, Phone, MapPin, Briefcase, IdCard } from "lucide-react";
 
-interface ProfileData {
-  first_name: string | null;
-  last_name: string | null;
+interface ProfileFormData {
+  full_name: string;
   phone: string | null;
-  address: string | null;
-  department: string | null;
-  employee_id: string | null;
-  created_at: string;
-  display_name: string | null;
 }
 
-export const Profile = () => {
+const Profile = () => {
   const { user, userRole } = useAuth();
-  const queryClient = useQueryClient();
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: "",
-    displayName: "",
-    lastName: "",
-    phone: "",
-    address: "",
-    department: "",
-    employeeId: "",
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [claimsStats, setClaimsStats] = useState({
+    totalClaims: 0,
+    completedClaims: 0,
+    activeClaims: 0,
   });
 
-  // Fetch profile data
-  const { data: profile, isLoading: profileLoading } = useQuery({
-    queryKey: ['profile', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
+  const { register, handleSubmit, setValue } = useForm<ProfileFormData>();
 
+  useEffect(() => {
+    if (user) {
+      loadProfile();
+      loadClaimsStats();
+    }
+  }, [user]);
+
+  const loadProfile = async () => {
+    try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
+        .from('users')
+        .select('full_name, phone')
+        .eq('id', user!.id)
         .single();
 
-      if (error) {
-        console.error('Error fetching profile:', error);
-        return null;
+      if (error) throw error;
+
+      if (data) {
+        setValue('full_name', data.full_name || '');
+        setValue('phone', data.phone || '');
       }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+      toast.error('Failed to load profile');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      return data as ProfileData;
-    },
-    enabled: !!user?.id,
-  });
-
-  // Fetch claims count for stats
-  const { data: claimsStats, isLoading: statsLoading } = useQuery({
-    queryKey: ['claims-stats', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return { total: 0, completed: 0 };
-
-      const { data, error } = await supabase
+  const loadClaimsStats = async () => {
+    try {
+      const { data: claims, error } = await supabase
         .from('claims')
         .select('id, status')
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching claims stats:', error);
-        return { total: 0, completed: 0 };
-      }
-
-      const total = data.length;
-      const completed = data.filter(c => 
-        c.status === 'approved' || c.status === 'paid'
-      ).length;
-
-      return { total, completed };
-    },
-    enabled: !!user?.id,
-  });
-
-  // Update form data when profile loads
-  useEffect(() => {
-    if (profile) {
-      setFormData({
-        firstName: profile.first_name || "",
-        displayName: profile.display_name || "",
-        lastName: profile.last_name || "",
-        phone: profile.phone || "",
-        address: profile.address || "",
-        department: profile.department || "",
-        employeeId: profile.employee_id || "",
-      });
-    }
-  }, [profile]);
-
-  // Mutation to update profile
-  const updateProfileMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      if (!user?.id) throw new Error("No user ID");
-
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-            display_name: data.displayName,
-          user_id: user.id,
-          first_name: data.firstName,
-          last_name: data.lastName,
-          phone: data.phone,
-          address: data.address,
-          department: data.department,
-          employee_id: data.employeeId,
-        }, {
-          onConflict: 'user_id'
-        });
+        .eq('created_by', user!.id);
 
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
-      toast.success("Profile updated successfully");
-      setIsEditing(false);
-    },
-    onError: (error) => {
+
+      const total = claims?.length || 0;
+      const completed = claims?.filter(c => c.status === 'approved' || c.status === 'closed').length || 0;
+      const active = claims?.filter(c => c.status !== 'approved' && c.status !== 'closed' && c.status !== 'rejected').length || 0;
+
+      setClaimsStats({
+        totalClaims: total,
+        completedClaims: completed,
+        activeClaims: active,
+      });
+    } catch (error) {
+      console.error('Error loading claims stats:', error);
+    }
+  };
+
+  const onSubmit = async (data: ProfileFormData) => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          full_name: data.full_name,
+          phone: data.phone,
+        })
+        .eq('id', user!.id);
+
+      if (error) throw error;
+
+      toast.success('Profile updated successfully');
+    } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error("Failed to update profile");
-    },
-  });
-
-  const getUserInitials = () => {
-  if (formData.displayName) {
-    return formData.displayName.substring(0, 2).toUpperCase();
-  }
-  if (formData.firstName && formData.lastName) {
-    return `${formData.firstName.charAt(0)}${formData.lastName.charAt(0)}`.toUpperCase();
-  }
-  return user?.email?.charAt(0).toUpperCase() || "U";
-};
-
-  const handleSaveChanges = () => {
-    updateProfileMutation.mutate(formData);
+      toast.error('Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  const getUserInitial = () => {
+    return user?.email?.charAt(0).toUpperCase() || "U";
   };
 
-  if (profileLoading || statsLoading) {
+  const getRoleBadgeColor = () => {
+    switch (userRole) {
+      case 'superadmin': return 'bg-purple-500';
+      case 'admin': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getRoleLabel = () => {
+    switch (userRole) {
+      case 'superadmin': return 'Super Admin';
+      case 'admin': return 'Admin';
+      default: return 'User';
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
-  const completionRate = claimsStats && claimsStats.total > 0
-    ? ((claimsStats.completed / claimsStats.total) * 100).toFixed(1)
-    : "0";
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-          <p className="text-gray-600 mt-1">Manage your personal information and preferences</p>
-        </div>
-        <Button
-          onClick={() => setIsEditing(!isEditing)}
-          className="bg-blue-600 hover:bg-blue-700"
-          disabled={updateProfileMutation.isPending}
-        >
-          <Edit className="w-4 h-4 mr-2" />
-          {isEditing ? "Cancel" : "Edit Profile"}
-        </Button>
+    <div className="container mx-auto p-6 max-w-7xl">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
+        <p className="text-gray-600 mt-2">Manage your personal information and preferences</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Profile Card */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center">
-                {/* Avatar */}
-                <Avatar className="w-32 h-32 bg-blue-600 text-white text-4xl font-bold mb-4">
-                  <AvatarFallback className="bg-blue-600 text-white text-4xl">
-                    {getUserInitials()}
-                  </AvatarFallback>
-                </Avatar>
+        <Card className="lg:col-span-1">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center text-center">
+              <Avatar className="w-32 h-32 mb-4 bg-blue-100">
+                <AvatarFallback className="bg-blue-600 text-white text-4xl font-bold">
+                  {getUserInitial()}
+                </AvatarFallback>
+              </Avatar>
+              
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">
+                {user?.email?.split('@')[0] || 'User'}
+              </h2>
+              
+              <Badge className={`${getRoleBadgeColor()} text-white mb-4`}>
+                {getRoleLabel()}
+              </Badge>
 
-                {/* Name and Role */}
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">
-                {formData.displayName || 
-                (formData.firstName || formData.lastName
-                    ? `${formData.firstName || ''} ${formData.lastName || ''}`.trim()
-                    : user?.email?.split('@')[0] || "User")}
-                </h2>
-                <p className="text-gray-600 mb-3">
-                  {userRole === 'admin' ? 'System Administrator' : 'User'}
-                </p>
-                
-                {/* Status Badge */}
-                <Badge className="bg-green-100 text-green-700 hover:bg-green-100 mb-6">
-                  Active
-                </Badge>
-
-                {/* Contact Info */}
-                <div className="w-full space-y-3 text-left">
-                  <div className="flex items-center gap-3 text-gray-600">
-                    <Mail className="w-4 h-4 flex-shrink-0" />
-                    <span className="text-sm break-all">{user?.email}</span>
-                  </div>
-                  {formData.phone && (
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Phone className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">{formData.phone}</span>
-                    </div>
-                  )}
-                  {formData.address && (
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <MapPin className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">{formData.address.split(',')[0]}</span>
-                    </div>
-                  )}
-                  {profile?.created_at && (
-                    <div className="flex items-center gap-3 text-gray-600">
-                      <Calendar className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm">
-                        Joined {format(new Date(profile.created_at), 'MMM yyyy')}
-                      </span>
-                    </div>
-                  )}
-                </div>
+              <div className="flex items-center text-gray-600 mb-2">
+                <Mail className="w-4 h-4 mr-2" />
+                <span className="text-sm">{user?.email}</span>
               </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Right Column - Personal Information */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <span className="text-blue-600">👤</span>
-                Personal Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {/* Display Name */}
-                <div>
-                <Label htmlFor="displayName">Display Name</Label>
+              <Badge variant="outline" className="text-green-600 border-green-600">
+                Active
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Right Column - Profile Form */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5" />
+              Personal Information
+            </CardTitle>
+            <CardDescription>
+              Update your personal details and contact information
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="full_name">Display Name</Label>
                 <Input
-                    id="displayName"
-                    name="displayName"
-                    value={formData.displayName}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className="mt-1"
-                    placeholder="How you want to be called"
+                  id="full_name"
+                  placeholder="How you want to be called"
+                  {...register('full_name')}
                 />
-                </div>
-              <div className="space-y-6">
-                {/* First Name and Last Name */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
+              </div>
 
-                {/* Email and Phone */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="email">Email Address</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
                       id="email"
-                      type="email"
-                      value={user?.email || ""}
+                      value={user?.email || ''}
                       disabled
-                      className="mt-1 bg-gray-50"
+                      className="pl-10 bg-gray-50"
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="phone">Phone Number</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                     <Input
                       id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="mt-1"
+                      placeholder="+91 98765 43210"
+                      className="pl-10"
+                      {...register('phone')}
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* Address */}
-                <div>
-                  <Label htmlFor="address">Address</Label>
-                  <Textarea
-                    id="address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    rows={3}
-                    className="mt-1"
-                  />
-                </div>
-
-                {/* Department and Employee ID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="department">Department</Label>
-                    <Input
-                      id="department"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="employeeId">Employee ID</Label>
-                    <Input
-                      id="employeeId"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-
-                {/* Save Button */}
-                {isEditing && (
-                  <Button
-                    onClick={handleSaveChanges}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={updateProfileMutation.isPending}
-                  >
-                    {updateProfileMutation.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      "Save Changes"
-                    )}
-                  </Button>
+              <Button type="submit" disabled={saving} className="w-full md:w-auto">
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Bottom Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Tasks Completed</p>
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {claimsStats?.completed || 0}
-                </h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Out of {claimsStats?.total || 0} total claims
-                </p>
-              </div>
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Target className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Completion Rate</p>
-                <h3 className="text-3xl font-bold text-gray-900">{completionRate}%</h3>
-                <p className="text-sm text-green-600 mt-1">
-                  {Number(completionRate) >= 50 ? "Great progress" : "Keep going"}
-                </p>
+        {/* Stats Cards */}
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Activity Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-blue-50 p-6 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-gray-600">Tasks Completed</h3>
+                  <Briefcase className="w-8 h-8 text-blue-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{claimsStats.completedClaims}</p>
+                <p className="text-sm text-gray-500 mt-1">Out of {claimsStats.totalClaims} total claims</p>
               </div>
-              <div className="p-3 bg-green-50 rounded-full">
-                <Award className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Active Claims</p>
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {(claimsStats?.total || 0) - (claimsStats?.completed || 0)}
-                </h3>
-                <p className="text-sm text-blue-600 mt-1">In progress</p>
+              <div className="bg-green-50 p-6 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-gray-600">Completion Rate</h3>
+                  <IdCard className="w-8 h-8 text-green-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">
+                  {claimsStats.totalClaims > 0 
+                    ? Math.round((claimsStats.completedClaims / claimsStats.totalClaims) * 100) 
+                    : 0}%
+                </p>
+                <p className="text-sm text-gray-500 mt-1">Keep going</p>
               </div>
-              <div className="p-3 bg-purple-50 rounded-full">
-                <Activity className="w-6 h-6 text-purple-600" />
+
+              <div className="bg-purple-50 p-6 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-gray-600">Active Claims</h3>
+                  <MapPin className="w-8 h-8 text-purple-600" />
+                </div>
+                <p className="text-3xl font-bold text-gray-900">{claimsStats.activeClaims}</p>
+                <p className="text-sm text-gray-500 mt-1">In progress</p>
               </div>
             </div>
           </CardContent>
@@ -452,3 +276,5 @@ export const Profile = () => {
     </div>
   );
 };
+
+export default Profile; 

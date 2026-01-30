@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-type UserRole = 'admin' | 'user';
+type UserRole = 'superadmin' | 'admin' | 'user';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   userRole: UserRole | null;
   isAdmin: boolean;
+  isSuperadmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   userRole: null,
   isAdmin: false,
+  isSuperadmin: false,
 });
 
 export const useAuth = () => {
@@ -40,52 +42,51 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
 
   const fetchUserRole = async (userId: string) => {
-  try {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .limit(1)  // Only get one row
-      .single();  // Now we can use single() safely
-    
-    if (error && error.code === 'PGRST116') {
-      // No role found, create one
-      console.log('No role found, creating default role');
-      try {
-        await supabase
-          .from('user_roles')
-          .insert({ user_id: userId, role: 'user' })
-          .select()
-          .single();
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('role, status')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user role:', error);
         setUserRole('user');
-      } catch (insertError) {
-        console.error('Failed to create default role:', insertError);
-        setUserRole('user');
+        return;
       }
-    } else if (error) {
+
+      if (data.status !== 'active') {
+        console.log('User is not active:', data.status);
+        setUserRole(null);
+        return;
+      }
+
+      setUserRole((data.role as UserRole) || 'user');
+    } catch (error) {
       console.error('Error fetching user role:', error);
       setUserRole('user');
-    } else {
-      setUserRole((data.role as UserRole) || 'user');
     }
-  } catch (error) {
-    console.error('Error fetching user role:', error);
-    setUserRole('user');
-  }
-};
+  };
 
   useEffect(() => {
-    // Set up auth state listener FIRST
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchUserRole(session.user.id);
+      }
+      
+      setLoading(false);
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Defer role fetching to prevent deadlocks
-          setTimeout(() => {
-            fetchUserRole(session.user.id);
-          }, 0);
+          fetchUserRole(session.user.id);
         } else {
           setUserRole(null);
         }
@@ -94,27 +95,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchUserRole(session.user.id);
-      } else {
-        setUserRole(null);
-      }
-      
-      setLoading(false);
-    });
-
     return () => subscription.unsubscribe();
   }, []);
 
   const isAdmin = userRole === 'admin';
+  const isSuperadmin = userRole === 'superadmin';
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin, isSuperadmin }}>
       {children}
     </AuthContext.Provider>
   );

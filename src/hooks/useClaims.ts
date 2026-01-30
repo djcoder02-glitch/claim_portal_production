@@ -2,117 +2,53 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { Tables, TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
-
-// Use Supabase generated types
-type ClaimUpdate = TablesUpdate<'claims'>;
 
 export interface Claim {
   id: string;
-  user_id: string;
-  policy_type_id: string;
+  created_by: string;
+  company_id: string;
+  policy_id: string | null;
   claim_number: string;
-  title: string;
-  intimation_date: string|null;
-  status: 'pending' | 'submitted' | 'under_review' | 'approved' | 'rejected' | 'paid';
-  claim_amount?: number;
-  form_data: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  broker_id?: string | null;  // ← MAKE IT OPTIONAL WITH ?
-  policy_types?: {
-    name: string;
-    description: string;
-    fields: unknown[];
-  };
-  insurer_name?:string;
-  surveyor_name?:string;
-}
-
-
-export interface PolicyType {
-  id: string;
-  name: string;
-  description: string;
-  fields: unknown[];
-  parent_id?: string;
-  created_at: string;
-  updated_at: string;
-  required_documents?: string[]; 
-  parsing_config?: {
-    bill_of_entry?: string[];
-    policy_document?: string[];
-  };
-}
-
-interface DatabaseClaimRow {
-  id: string;
-  user_id: string;
-  policy_type_id: string;
-  claim_number: string;
-  title: string;
+  claim_type: string;
   status: string;
-  intimation_date:string | null;
+  insured_name: string | null;
+  loss_date: string | null;
+  intimation_date: string | null;
   claim_amount: number | null;
-  form_data: Record<string, unknown> | null;
+  surveyor_id: string | null;
+  sections: any;
   created_at: string;
   updated_at: string;
-  broker_id?: string | null;  // ← MAKE IT OPTIONAL WITH ?
-  policy_type_name?: string;
-  policy_type_description?: string;
-  policy_type_fields?: unknown[];
+  finalized_at: string | null;
 }
 
 export const useClaims = () => {
-  const { isAdmin } = useAuth();
-
-  console.log('[UseClaims] isAdmin : ', isAdmin);
+  const { isSuperadmin, isAdmin } = useAuth();
   
   return useQuery({
-  queryKey: ["claims", isAdmin ? "admin" : "user"],
-  staleTime: 0, // Always fetch fresh data
-  queryFn: async () => {
-      let data, error;
-      
-      console.log('[useClaims] Fetching claims for:', isAdmin ? 'admin' : 'user');
+    queryKey: ["claims"],
+    queryFn: async () => {
+      console.log('[useClaims] Fetching claims...');
 
-      if (isAdmin) {
-        ({ data, error } = await supabase.rpc('get_all_claims_admin'));
-      } else {
-        ({ data, error } = await supabase.rpc('get_user_claims'));
-      }
-      
+      const { data, error } = await supabase
+        .from('claims')
+        .select(`
+          *,
+          policies:policy_id (
+            policy_number,
+            policy_type,
+            insured_name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
       if (error) {
         console.error('[useClaims] Error:', error);
         throw error;
       }
+
       console.log('[useClaims] Fetched claims count:', data?.length);
-
-      if (!data) {
-        return [];
-      }
-
-      return data.map((row: any) => ({
-        ...row,
-        form_data: typeof row.form_data === 'string' ? JSON.parse(row.form_data) : row.form_data,
-        policy_types: row.policy_type_name ? {
-          name: row.policy_type_name,
-          description: row.policy_type_description || '',
-          fields: row.policy_type_fields || []
-        } : null
-      })) as Claim[];
-    },
-  });
-};
-
-export const usePolicyTypes = () => {
-  return useQuery({
-    queryKey: ["policy_types"],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_all_policy_types_admin');
-      
-      if (error) throw error;
-      return data as PolicyType[];
+      return data as Claim[];
     },
   });
 };
@@ -122,50 +58,56 @@ export const useCreateClaim = () => {
 
   return useMutation({
     mutationFn: async (claimData: {
-      policy_type_id: string;
-      title: string;
-      // description?: string;
+      policy_id?: string;
+      claim_type?: string;
+      insured_name?: string;
+      loss_date?: string;
       intimation_date?: string;
-      form_data?: Record<string, unknown>;
       claim_amount?: number;
     }) => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
+      
       const user = userData?.user;
       if (!user) throw new Error("Please sign in to create a claim.");
+
+      // Get user's company_id
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userProfile?.company_id) {
+        throw new Error("No company associated with your account");
+      }
+
+      // Generate claim number
+      const claimNumber = `CLM-${Date.now()}`;
 
       const { data, error } = await supabase
         .from("claims")
         .insert({
-          policy_type_id: claimData.policy_type_id,
-          title: claimData.title,
-          user_id: user.id,
-          intimation_date:claimData.intimation_date || null,
-          form_data: claimData.form_data || null,
+          claim_number: claimNumber,
+          company_id: userProfile.company_id,
+          created_by: user.id,
+          policy_id: claimData.policy_id || null,
+          claim_type: claimData.claim_type || 'regular',
+          status: 'draft',
+          insured_name: claimData.insured_name || null,
+          loss_date: claimData.loss_date || null,
+          intimation_date: claimData.intimation_date || null,
           claim_amount: claimData.claim_amount || null,
-          status:'pending'
-        } as never)
+          sections: [],
+        })
         .select()
         .single();
 
       if (error) throw error;
       return data;
     },
-        onSuccess: (data) => {
-      // Invalidate the claims list
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["claims"] });
-
-      // Invalidate any claim detail cache so useClaimById refetches updated data.
-      // Invalidate by prefix "claim" which covers keys like ["claim", id] and ["claim", id, "user"/"admin"]
-      queryClient.invalidateQueries({ queryKey: ["claim"] });
-
-      // Also target the newly created claim specifically when possible
-      if (data && (data as any).id) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const createdId = (data as any).id as string;
-        queryClient.invalidateQueries({ queryKey: ["claim", createdId] });
-      }
-
       toast.success("Claim created successfully!");
     },
     onError: (error) => {
@@ -183,7 +125,7 @@ export const useUpdateClaim = () => {
       updates,
     }: {
       id: string;
-      updates: ClaimUpdate;
+      updates: Partial<Claim>;
     }) => {
       const { data, error } = await supabase
         .from("claims")
@@ -197,7 +139,6 @@ export const useUpdateClaim = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["claims"] });
-      queryClient.invalidateQueries({ queryKey: ["claim"] });
       toast.success("Claim updated successfully!");
     },
     onError: (error) => {
@@ -206,92 +147,29 @@ export const useUpdateClaim = () => {
   });
 };
 
-export const useUpdateClaimSilent = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      id,
-      updates,
-    }: {
-      id: string;
-      updates: ClaimUpdate;
-    }) => {
+export const useClaimById = (id: string) => {
+  return useQuery({
+    queryKey: ["claim", id],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from("claims")
-        .update(updates)
+        .select(`
+          *,
+          policies:policy_id (
+            policy_number,
+            policy_type,
+            insured_name
+          )
+        `)
         .eq("id", id)
-        .select()
         .single();
 
       if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["claims"] });
-      queryClient.invalidateQueries({ queryKey: ["claim"] });
-    },
-  });
-};
-
-export const useClaimById = (id: string) => {
-  const { isAdmin } = useAuth();
-  
-  return useQuery({
-    queryKey: ["claim", id, isAdmin ? "admin" : "user"],
-    staleTime: 0, // Always fetch fresh data
-    queryFn: async () => {
-      if (isAdmin) {
-        // Fetch the specific claim directly instead of fetching all claims
-        const { data, error } = await supabase
-          .from("claims")
-          .select(`
-            *,
-            policy_types:policy_type_id (
-              name,
-              description,
-              fields
-            )
-          `)
-          .eq("id", id)
-          .single();
-
-        if (error) throw error;
-        
-        // Transform to match expected format
-        const transformedData = {
-          ...data,
-          policy_types: data.policy_types ? {
-            name: data.policy_types.name,
-            description: data.policy_types.description || '',
-            fields: data.policy_types.fields || []
-          } : null
-        };
-
-        return transformedData as Claim;
-      } else {
-        // Regular user query (subject to RLS)
-        const { data, error } = await supabase
-          .from("claims")
-          .select(`
-            *,
-            policy_types:policy_type_id (
-              name,
-              description,
-              fields
-            )
-          `)
-          .eq("id", id)
-          .single();
-
-        if (error) throw error;
-        return data as Claim;
-      }
+      return data as Claim;
     },
     enabled: !!id,
   });
 };
-
 
 export const useDeleteClaim = () => {
   const queryClient = useQueryClient();

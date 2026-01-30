@@ -14,7 +14,7 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import Analytics from "./pages/Analytics";
 import HelpCenter from "./pages/HelpCenter";
-import {Profile} from "./pages/Profile";
+import Profile from "./pages/Profile";
 import {TeamManagement} from "./pages/TeamManagement";
 import Setting from "./pages/Settings";
 import Brokers from "./pages/Brokers";
@@ -27,6 +27,8 @@ import { ClientReportsDashboard } from "./pages/ClientReportsDashboard";
 import { VASReportDetail } from "./pages/VASReportDetail";
 import { ClientReportDetail } from "./pages/ClientReportDetail";
 import {ImageGenerator} from "./pages/ImageGenerator"
+import CompanyManagement from "@/pages/CompanyManagement";
+
 const queryClient = new QueryClient();
 
 /**
@@ -120,6 +122,9 @@ const App = () => (
               
               {/* Client Reports Dashboard - NEW */}
               <Route path="/clients/reports" element={<ClientReportsDashboard />} />
+
+              {/* Company Management */}
+              <Route path="/company-management" element={<CompanyManagement />} />
               
               {/* Notifications */}
               <Route 

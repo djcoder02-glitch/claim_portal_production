@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, Loader2 } from "lucide-react";
+
+interface Company {
+  id: string;
+  name: string;
+}
 
 const Auth = () => {
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(true);
 
   // Sign In Form State
   const [signInData, setSignInData] = useState({
@@ -25,16 +33,36 @@ const Auth = () => {
     password: "",
     confirmPassword: "",
     displayName: "",
-    firstName: "",
-    lastName: "",
     phone: "",
-    address: "",
-    department: "",
-    employeeId: "",
+    companyId: "",
   });
+
+  // Fetch available companies
+useEffect(() => {
+  const fetchCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, name')
+        .neq('id', '00000000-0000-0000-0000-000000000001') // Exclude SuperAdmin company
+        .order('name');
+      
+      if (error) throw error;
+      setCompanies(data || []);
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+      toast.error('Failed to load companies');
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
+  fetchCompanies();
+}, []);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!signInData.email || !signInData.password) {
       toast.error("Please fill in all fields");
       return;
@@ -42,18 +70,50 @@ const Auth = () => {
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: signInData.email,
         password: signInData.password,
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password');
+        }
+        throw error;
+      }
+
+      // Check user status
+      if (data.user) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('status, company_id')
+          .eq('id', data.user.id)
+          .single();
+
+        if (userError) {
+          console.error('Error fetching user status:', userError);
+          await supabase.auth.signOut();
+          throw new Error('Failed to verify account status');
+        }
+
+        if (userData.status === 'pending') {
+          await supabase.auth.signOut();
+          toast.error('Your account is pending approval. Please contact your administrator.');
+          return;
+        }
+
+        if (userData.status === 'suspended') {
+          await supabase.auth.signOut();
+          toast.error('Your account has been suspended. Please contact your administrator.');
+          return;
+        }
+      }
       
       toast.success("Signed in successfully!");
       navigate("/");
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      toast.error("Sign in failed: " + errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -63,8 +123,15 @@ const Auth = () => {
     e.preventDefault();
     
     // Validation
-    if (!signUpData.email || !signUpData.password || !signUpData.confirmPassword) {
+    if (!signUpData.email || !signUpData.password || !signUpData.confirmPassword || !signUpData.displayName || !signUpData.companyId) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(signUpData.email)) {
+      toast.error("Please enter a valid email address");
       return;
     }
 
@@ -73,80 +140,115 @@ const Auth = () => {
       return;
     }
 
-    if (signUpData.password.length < 6) {
-      toast.error("Password must be at least 6 characters long");
+    if (signUpData.password.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
+    // Password strength check
+    const hasUpperCase = /[A-Z]/.test(signUpData.password);
+    const hasLowerCase = /[a-z]/.test(signUpData.password);
+    const hasNumber = /[0-9]/.test(signUpData.password);
+    
+    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+      toast.error("Password must contain uppercase, lowercase, and numbers");
       return;
     }
 
     setIsSubmitting(true);
+    let authUserId: string | null = null;
+
     try {
-      const redirectUrl = `${window.location.origin}/`;
-      
-      // Step 1: Create the user account
-      const { data, error } = await supabase.auth.signUp({
+      // Step 1: Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signUpData.email,
         password: signUpData.password,
         options: {
-          emailRedirectTo: redirectUrl,
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            display_name: signUpData.displayName,
+          }
         },
       });
 
-      if (error) throw error;
-      
-      if (data.user) {
-        // Step 2: Create user role
-        try {
-          const { error: roleError } = await supabase
-            .from('user_roles')
-            .upsert({ 
-              user_id: data.user.id, 
-              role: 'user' 
-            }, { 
-              onConflict: 'user_id' 
-            });
-          
-          if (roleError) {
-            console.error('Role creation error:', roleError);
-          }
-        } catch (roleError) {
-          console.error('Failed to create user role:', roleError);
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new Error('This email is already registered');
         }
-
-        // Step 3: Create profile with additional information
-        try {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .upsert({
-              user_id: data.user.id,
-              first_name: signUpData.firstName,
-              display_name: signUpData.displayName || signUpData.firstName,
-              last_name: signUpData.lastName,
-              phone: signUpData.phone,
-              address: signUpData.address,
-              department: signUpData.department,
-              employee_id: signUpData.employeeId,
-            }, {
-              onConflict: 'user_id'
-            });
-
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-            toast.warning("Account created but profile update failed. You can update it later.");
-          }
-        } catch (profileError) {
-          console.error('Failed to create profile:', profileError);
-        }
-
-        // Step 4: Show success message
-        if (data.user.email_confirmed_at) {
-          toast.success("Account created and signed in successfully!");
-        } else {
-          toast.success("Account created! Please check your email to confirm your account.");
-        }
+        throw authError;
       }
+
+      if (!authData.user) {
+        throw new Error('Failed to create account');
+      }
+
+      authUserId = authData.user.id;
+
+      // Step 2: Create user record
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: signUpData.email,
+          full_name: signUpData.displayName,
+          phone: signUpData.phone || null,
+          company_id: signUpData.companyId,
+          role: 'user',
+          status: 'pending'
+        });
+      
+      if (userError) {
+        console.error('User creation error:', userError);
+        throw new Error('Failed to create user profile');
+      }
+
+      // Step 3: Create pending request
+      const { error: requestError } = await supabase
+        .from('pending_user_requests')
+        .insert({
+          user_id: authData.user.id,
+          company_id: signUpData.companyId,
+          status: 'pending'
+        });
+
+      if (requestError) {
+        console.error('Request creation error:', requestError);
+        // Non-critical error, continue
+      }
+
+      // Success
+      toast.success(
+        "Account created successfully! Your request has been sent to the company administrator for approval.",
+        { duration: 6000 }
+      );
+
+      // Sign out the user (they need approval first)
+      await supabase.auth.signOut();
+
+      // Reset form
+      setSignUpData({
+        email: "",
+        password: "",
+        confirmPassword: "",
+        displayName: "",
+        phone: "",
+        companyId: "",
+      });
+
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      toast.error("Sign up failed: " + errorMessage);
+      toast.error(errorMessage);
+
+      // Rollback: Delete auth user if created
+      if (authUserId) {
+        try {
+          // Note: Supabase doesn't allow direct user deletion via client
+          // You'll need an admin function for this, or accept orphaned auth users
+          console.error('Auth user created but profile failed. User ID:', authUserId);
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -161,8 +263,8 @@ const Auth = () => {
               <LayoutDashboard className="w-10 h-10 text-white" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold">Gondalia Insurance</CardTitle>
-          <CardDescription>Welcome to the Claims Management System</CardDescription>
+          <CardTitle className="text-3xl font-bold">Insurance Claims Portal</CardTitle>
+          <CardDescription>Multi-Company Claims Management System</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -176,25 +278,27 @@ const Auth = () => {
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
+                  <Label htmlFor="signin-email">Email *</Label>
                   <Input
                     id="signin-email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder="you@company.com"
                     value={signInData.email}
                     onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
+                    disabled={isSubmitting}
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
+                  <Label htmlFor="signin-password">Password *</Label>
                   <Input
                     id="signin-password"
                     type="password"
                     placeholder="••••••••"
                     value={signInData.password}
                     onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
+                    disabled={isSubmitting}
                     required
                   />
                 </div>
@@ -204,7 +308,14 @@ const Auth = () => {
                   className="w-full bg-blue-600 hover:bg-blue-700"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Signing in..." : "Sign In"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    "Sign In"
+                  )}
                 </Button>
               </form>
             </TabsContent>
@@ -212,16 +323,44 @@ const Auth = () => {
             {/* Sign Up Tab */}
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
-                {/* Email and Password */}
+                {/* Company Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="signup-company">Company *</Label>
+                  {loadingCompanies ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                    </div>
+                  ) : (
+                    <Select
+                      value={signUpData.companyId}
+                      onValueChange={(value) => setSignUpData({ ...signUpData, companyId: value })}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select your company" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {companies.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            {company.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {/* Email and Phone */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email *</Label>
                     <Input
                       id="signup-email"
                       type="email"
-                      placeholder="you@example.com"
+                      placeholder="you@company.com"
                       value={signUpData.email}
                       onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
+                      disabled={isSubmitting}
                       required
                     />
                   </div>
@@ -234,82 +373,22 @@ const Auth = () => {
                       placeholder="+91 98765 43210"
                       value={signUpData.phone}
                       onChange={(e) => setSignUpData({ ...signUpData, phone: e.target.value })}
+                      disabled={isSubmitting}
                     />
                   </div>
                 </div>
                 
                 {/* Display Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="signup-displayname">Display Name *</Label>
+                  <Label htmlFor="signup-displayname">Full Name *</Label>
                   <Input
                     id="signup-displayname"
                     type="text"
-                    placeholder="How you want to be called"
+                    placeholder="John Doe"
                     value={signUpData.displayName}
                     onChange={(e) => setSignUpData({ ...signUpData, displayName: e.target.value })}
+                    disabled={isSubmitting}
                     required
-                  />
-                </div>
-
-                {/* First Name and Last Name */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-firstname">First Name</Label>
-                    <Input
-                      id="signup-firstname"
-                      type="text"
-                      placeholder="John"
-                      value={signUpData.firstName}
-                      onChange={(e) => setSignUpData({ ...signUpData, firstName: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-lastname">Last Name</Label>
-                    <Input
-                      id="signup-lastname"
-                      type="text"
-                      placeholder="Doe"
-                      value={signUpData.lastName}
-                      onChange={(e) => setSignUpData({ ...signUpData, lastName: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                {/* Department and Employee ID */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-department">Department</Label>
-                    <Input
-                      id="signup-department"
-                      type="text"
-                      placeholder="Claims Department"
-                      value={signUpData.department}
-                      onChange={(e) => setSignUpData({ ...signUpData, department: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-employeeid">Employee ID</Label>
-                    <Input
-                      id="signup-employeeid"
-                      type="text"
-                      placeholder="GIS-USR-001"
-                      value={signUpData.employeeId}
-                      onChange={(e) => setSignUpData({ ...signUpData, employeeId: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                {/* Address */}
-                <div className="space-y-2">
-                  <Label htmlFor="signup-address">Address</Label>
-                  <Input
-                    id="signup-address"
-                    type="text"
-                    placeholder="123 Business Park, Mumbai, Maharashtra"
-                    value={signUpData.address}
-                    onChange={(e) => setSignUpData({ ...signUpData, address: e.target.value })}
                   />
                 </div>
 
@@ -323,8 +402,12 @@ const Auth = () => {
                       placeholder="••••••••"
                       value={signUpData.password}
                       onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
+                      disabled={isSubmitting}
                       required
                     />
+                    <p className="text-xs text-gray-500">
+                      Min 8 characters, uppercase, lowercase, and numbers
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -335,6 +418,7 @@ const Auth = () => {
                       placeholder="••••••••"
                       value={signUpData.confirmPassword}
                       onChange={(e) => setSignUpData({ ...signUpData, confirmPassword: e.target.value })}
+                      disabled={isSubmitting}
                       required
                     />
                   </div>
@@ -343,13 +427,20 @@ const Auth = () => {
                 <Button
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || loadingCompanies}
                 >
-                  {isSubmitting ? "Creating account..." : "Create Account"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    "Request Access"
+                  )}
                 </Button>
 
                 <p className="text-xs text-gray-500 text-center mt-2">
-                  * Required fields
+                  * Required fields. Your request will be sent to your company administrator for approval.
                 </p>
               </form>
             </TabsContent>
