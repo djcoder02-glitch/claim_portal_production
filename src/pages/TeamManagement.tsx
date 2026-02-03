@@ -70,7 +70,7 @@ export const TeamManagement = () => {
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['team-users'],
     queryFn: async () => {
-      if (!currentUser?.id) {
+      if (!currentUser?.id) { 
         throw new Error('User not authenticated');
       }
 

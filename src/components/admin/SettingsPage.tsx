@@ -1,4 +1,3 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings as SettingsIcon, FileText, Edit } from "lucide-react";
 import { PolicyTypesManager } from "@/components/admin/PolicyTypesManager";
@@ -46,13 +45,14 @@ export const SettingsPage = () => {
         <TabsContent value="claim-fields" className="space-y-4">
           <NewClaimFieldsManager />
         </TabsContent>
+        
         <TabsContent value="doc-requirements" className="space-y-4">
           <DocumentRequirementsManager />
         </TabsContent>
+        
         <TabsContent value="parsing-config" className="space-y-4">
           <ParsingConfigManager />
         </TabsContent>
-        
       </Tabs>
     </div>
   );

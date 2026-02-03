@@ -11,9 +11,8 @@ import { useUpdateClaim, useUpdateClaimSilent, type Claim } from "@/hooks/useCla
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useSurveyors } from "@/hooks/useSurveyors";
 import { useAddInsurer, useInsurers } from "@/hooks/useInsurers";
-import { useAutosave } from "@/hooks/useAutosave";
 import { toast } from "sonner";
-import { Save, Check, Briefcase, Plus } from "lucide-react";
+import { Save, Briefcase, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,7 +21,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-
 
 interface PolicyDetailsFormProps {
   claim: Claim;
@@ -35,23 +33,23 @@ interface FormField {
   required: boolean;
   options?: string[];
 }
+
 export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset, control } = useForm({
-    defaultValues: claim.form_data || {}
+    defaultValues: {
+      registration_id: claim.registration_id || '',
+      insured_name: claim.insured_name || '',
+      policy_number: claim.policy_number || '',
+      sum_insured: claim.sum_insured || '',
+      loss_description: claim.loss_description || '',
+      intimation_date: claim.intimation_date || '',
+      date_of_loss: claim.loss_date || '',
+    }
   });
 
-  console.log("[PolicyDetailsForm] Initial form data:", claim);
-  console.log("[PolicyDetailsForm] Broker ID from claim:", claim.broker_id);
-  
-  // ADD THESE NEW LOGS
-  useEffect(() => {
-    console.log("[PolicyDetailsForm] Claim changed! New broker_id:", claim.broker_id);
-    console.log("[PolicyDetailsForm] Full claim object:", claim);
-  }, [claim]);
+  console.log("[PolicyDetailsForm] Initial claim data:", claim);
 
-
-  const isMountedRef= useRef(true);
-
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -63,7 +61,7 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
   const { data: insurers = [], isLoading: insurersLoading, error: insurersError } = useInsurers();
   const addInsurerMutation = useAddInsurer();
 
-   useEffect(() => {
+  useEffect(() => {
     console.log("[PolicyDetailsForm] Surveyors:", { 
       loading: surveyorsLoading, 
       count: surveyors.length, 
@@ -87,13 +85,10 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
     const newClaimFields = (fieldsProp as any)?.new_claim_fields;
     return Array.isArray(newClaimFields) ? (newClaimFields as FormField[]) : [];
   })();
-  const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set());
-  const [fieldLabels, setFieldLabels] = useState<Record<string, string>>({});
-  const [editingLabels, setEditingLabels] = useState<Set<string>>(new Set());
 
+  const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set());
   const [brokers, setBrokers] = useState<Array<{ id: string; name: string; email: string | null; contact: string | null; company: string | null }>>([]);
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>(claim.broker_id || "");
-
   const [showBrokerDialog, setShowBrokerDialog] = useState(false);
   const [newBrokerData, setNewBrokerData] = useState({
     name: "",
@@ -102,65 +97,29 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
     company: "",
   });
 
-
-  const handleAutosave = useCallback(async (data: Record<string, any>) => {
-  console.log('🔄 Autosave triggered');
-  console.log('🔍 Claim keys:', Object.keys(claim));
-  console.log('🔑 service_id:', (claim as any).service_id);
-  console.log('🔑 company_id:', (claim as any).company_id);
-  
-  // BETTER DETECTION: Check for service_id (VAS) or company_id (Client Reports)
-  const isVASReport = !!(claim as any).service_id;
-  const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-  const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-  
-  console.log('💾 Autosave to table:', tableName);
-  
-  // Clean the data
-  const cleanedData: any = { ...data };
-  Object.keys(cleanedData).forEach(key => {
-    if (cleanedData[key] === undefined || cleanedData[key] === '') {
-      cleanedData[key] = null;
-    }
-  });
-  
-  const { error } = await supabase
-    .from(tableName)
-    .update({ form_data: cleanedData })
-    .eq("id", claim.id);
-    
-  if (error) {
-    console.error("❌ Autosave error:", error);
-    throw error;
-  }
-  
-  console.log('✅ Autosave successful');
-}, [claim]);
-
-  useAutosave({ control, onSave: handleAutosave, delay: 2000, enabled: false });
-
-  // Reset form data when it changes
+  // Reset form data when claim changes
   useEffect(() => {
-    const allFormData = { 
-      ...claim.form_data,
-      intimation_date: claim.intimation_date || claim.form_data?.intimation_date || '',
+    const formData = {
+      registration_id: claim.registration_id || '',
+      insured_name: claim.insured_name || '',
+      policy_number: claim.policy_number || '',
+      sum_insured: claim.sum_insured || '',
+      loss_description: claim.loss_description || '',
+      intimation_date: claim.intimation_date || '',
+      date_of_loss: claim.loss_date || '',
     };
-    console.log("[PolicyDetailsForm] Resetting form with data:", allFormData); // Add this log
-    reset(allFormData);
-    setFieldLabels((claim.form_data?.field_labels || {}) as Record<string, string>);
-  }, [claim.form_data, claim.intimation_date, reset]);
+    console.log("[PolicyDetailsForm] Resetting form with data:", formData);
+    reset(formData);
+  }, [claim, reset]);
 
-// Reset broker ONLY when navigating to a different claim
-useEffect(() => {
-  setSelectedBrokerId(claim.broker_id || "");
-}, [claim.id]); // CRITICAL: Only depends on claim.id, not broker_id!
-
-
-
+  // Reset broker ONLY when navigating to a different claim
+  useEffect(() => {
+    setSelectedBrokerId(claim.broker_id || "");
+  }, [claim.id]);
 
   // Fetch brokers
   useEffect(() => {
-    const fetchBrokers = async() => {
+    const fetchBrokers = async () => {
       const { data, error } = await supabase
         .from('brokers')
         .select('*')
@@ -173,92 +132,60 @@ useEffect(() => {
     fetchBrokers();
   }, []);
 
-
-  const saveLabel = async (fieldName: string) => {
+  const saveField = async (fieldName: string) => {
+    if (!isMountedRef.current) return;
+    
+    console.log('💾 Saving field:', fieldName);
+    
     try {
-      const existingData = claim.form_data || {};
-      const updatedLabels = {
-        ...((typeof existingData.field_labels === "object" && existingData.field_labels !== null) ? existingData.field_labels : {}),
-        ...fieldLabels,
+      const fieldValue = watch(fieldName);
+      
+      // Map form fields to database columns
+      const updateData: any = {};
+      
+      // Handle standard fields that map directly to columns
+      const directMappings: Record<string, string> = {
+        registration_id: 'registration_id',
+        insured_name: 'insured_name',
+        policy_number: 'policy_number',
+        sum_insured: 'sum_insured',
+        loss_description: 'loss_description',
+        intimation_date: 'intimation_date',
+        date_of_loss: 'loss_date',
       };
+      
+      if (directMappings[fieldName]) {
+        updateData[directMappings[fieldName]] = fieldValue === undefined || fieldValue === '' ? null : fieldValue;
+      }
 
-      await updateClaimSilent.mutateAsync({
-        id: claim.id,
-        updates: { form_data: { ...existingData, field_labels: updatedLabels } },
-      });
+      // Use direct Supabase update
+      const { error } = await supabase
+        .from('claims')
+        .update(updateData)
+        .eq("id", claim.id);
+        
+      if (error) {
+        console.error('❌ Save field error:', error);
+        throw error;
+      }
+      
+      if (isMountedRef.current) {
+        setPendingSaves((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(fieldName);
+          return newSet;
+        });
 
-      setEditingLabels((prev) => {
-        const next = new Set(prev);
-        next.delete(fieldName);
-        return next;
-      });
-
-      toast.success("Label updated", { duration: 1500 });
-    } catch (e) {
-      console.error("Failed to save label", e);
-      toast.error("Failed to save label", { duration: 1500 });
+        toast.success("Policy detail saved", { duration: 1800 }); 
+        console.log('✅ Field saved successfully');
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        console.error("Failed to save field:", error);
+        toast.error("Failed to save field", { duration: 1800 });
+      }
     }
   };
-
-  const saveField = async (fieldName: string) => {
-  if(!isMountedRef.current) return;
-  
-  console.log('💾 Saving field:', fieldName);
-  console.log('🔍 Claim keys:', Object.keys(claim));
-  
-  try {
-    // BETTER DETECTION: Check for service_id (VAS) or company_id (Client Reports)
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-    
-    console.log('💾 Saving to table:', tableName);
-    
-    const fieldValue = watch(fieldName);
-    const existingData = claim.form_data || {};
-    
-    // Clean the data
-    const dataToSave: any = {
-      ...existingData,
-      [fieldName]: fieldValue === undefined || fieldValue === '' ? null : fieldValue,
-      field_labels: fieldLabels,
-    };
-    
-    // Remove undefined values
-    Object.keys(dataToSave).forEach(key => {
-      if (dataToSave[key] === undefined) {
-        dataToSave[key] = null;
-      }
-    });
-
-    // Use direct Supabase update with correct table
-    const { error } = await supabase
-      .from(tableName)
-      .update({ form_data: dataToSave })
-      .eq("id", claim.id);
-      
-    if (error) {
-      console.error('❌ Save field error:', error);
-      throw error;
-    }
-    
-    if(isMountedRef.current){
-      setPendingSaves((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(fieldName);
-        return newSet;
-      });
-
-      toast.success("Policy detail saved", { duration: 1800 }); 
-      console.log('✅ Field saved successfully');
-    }
-  } catch (error) {
-    if(isMountedRef.current){
-      console.error("Failed to save field:", error);
-      toast.error("Failed to save field", { duration: 1800 });
-    }
-  }
-};
 
   const renderField = (field: FormField) => {
     const fieldValue = watch(field.name);
@@ -278,14 +205,20 @@ useEffect(() => {
                   {...register(field.name, {
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || "")) {
+                      const fieldKey = field.name as keyof Claim;
+                      const currentValue = claim[fieldKey] || "";
+                      if (e.target.value !== currentValue) {
                         setPendingSaves((prev) => new Set([...prev, field.name]));
                       }
                     },
                     onBlur: () => pendingSaves.has(field.name) && saveField(field.name)
                   })}
                 />
-                {errors[field.name] && <p className="text-sm text-destructive mt-1">{errors[field.name]?.message as string}</p>}
+                {errors[field.name as keyof typeof errors] && (
+                  <p className="text-sm text-destructive mt-1">
+                    {String(errors[field.name as keyof typeof errors]?.message || '')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -307,14 +240,20 @@ useEffect(() => {
                     required: field.required ? `${field.label} is required` : false,
                     valueAsNumber: true,
                     onChange: (e) => {
-                      if (e.target.value !== String(claim.form_data?.[field.name] ?? "")) {
+                      const fieldKey = field.name as keyof Claim;
+                      const currentValue = String(claim[fieldKey] ?? "");
+                      if (e.target.value !== currentValue) {
                         setPendingSaves((prev) => new Set([...prev, field.name]));
                       }
                     },
                     onBlur: () => pendingSaves.has(field.name) && saveField(field.name)
                   })}
                 />
-                {errors[field.name] && <p className="text-sm text-destructive mt-1">{errors[field.name]?.message as string}</p>}
+                {errors[field.name as keyof typeof errors] && (
+                  <p className="text-sm text-destructive mt-1">
+                    {String(errors[field.name as keyof typeof errors]?.message || '')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -334,14 +273,20 @@ useEffect(() => {
                   {...register(field.name, {
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || "")) {
+                      const fieldKey = field.name as keyof Claim;
+                      const currentValue = claim[fieldKey] || "";
+                      if (e.target.value !== currentValue) {
                         setPendingSaves((prev) => new Set([...prev, field.name]));
                       }
                     },
                     onBlur: () => pendingSaves.has(field.name) && saveField(field.name)
                   })}
                 />
-                {errors[field.name] && <p className="text-sm text-destructive mt-1">{errors[field.name]?.message as string}</p>}
+                {errors[field.name as keyof typeof errors] && (
+                  <p className="text-sm text-destructive mt-1">
+                    {String(errors[field.name as keyof typeof errors]?.message || '')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -362,97 +307,105 @@ useEffect(() => {
                   {...register(field.name, {
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || "")) {
+                      const fieldKey = field.name as keyof Claim;
+                      const currentValue = claim[fieldKey] || "";
+                      if (e.target.value !== currentValue) {
                         setPendingSaves((prev) => new Set([...prev, field.name]));
                       }
                     },
                     onBlur: () => pendingSaves.has(field.name) && saveField(field.name)
                   })}
                 />
-                {errors[field.name] && <p className="text-sm text-destructive mt-1">{errors[field.name]?.message as string}</p>}
+                {errors[field.name as keyof typeof errors] && (
+                  <p className="text-sm text-destructive mt-1">
+                    {String(errors[field.name as keyof typeof errors]?.message || '')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
         );
 
       case "select":
-      // Special handling for surveyor field
-      if (field.name === "assigned_surveyor") {
-        return (
-          <div key={field.name} className="relative transition-all duration-200 rounded-lg py-1">
-            <div className="flex items-start gap-4">
-              <div className="w-[250px] flex-shrink-0 pt-2">
-                <Label>{field.label}{field.required && <span className="text-destructive">*</span>}</Label>
-              </div>
-              <div className="flex-1 max-w-full">
-                {surveyorsError && (
-                  <div className="text-sm text-red-600 bg-red-50 p-2 rounded mb-2">
-                    Failed to load surveyors: {surveyorsError.message}
-                  </div>
-                )}
-                <SearchableSelect
-                  options={surveyors.map((s) => s.name)}
-                  value={fieldValue || ""}
-                  placeholder={surveyorsLoading ? "Loading surveyors..." : "Select surveyor..."}
-                  searchPlaceholder="Search surveyors..."
-                  onValueChange={(val) => {
-                    setValue(field.name, val);
-                    if (val !== (claim.form_data?.[field.name] || "")) {
-                      setPendingSaves((prev) => new Set([...prev, field.name]));
-                      setTimeout(() => saveField(field.name), 500);
-                    }
-                  }}
-                  disabled={surveyorsLoading || !!surveyorsError}
-                  allowClear
-                  allowCreate={false}
-                  className="w-full"
-                />
+        // Special handling for surveyor field
+        if (field.name === "assigned_surveyor") {
+          return (
+            <div key={field.name} className="relative transition-all duration-200 rounded-lg py-1">
+              <div className="flex items-start gap-4">
+                <div className="w-[250px] flex-shrink-0 pt-2">
+                  <Label>{field.label}{field.required && <span className="text-destructive">*</span>}</Label>
+                </div>
+                <div className="flex-1 max-w-full">
+                  {surveyorsError && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded mb-2">
+                      Failed to load surveyors: {surveyorsError.message}
+                    </div>
+                  )}
+                  <SearchableSelect
+                    options={surveyors.map((s) => s.name)}
+                    value={fieldValue || ""}
+                    placeholder={surveyorsLoading ? "Loading surveyors..." : "Select surveyor..."}
+                    searchPlaceholder="Search surveyors..."
+                    onValueChange={(val) => {
+                      setValue(field.name, val);
+                      const fieldKey = field.name as keyof Claim;
+                      if (val !== (claim[fieldKey] || "")) {
+                        setPendingSaves((prev) => new Set([...prev, field.name]));
+                        setTimeout(() => saveField(field.name), 500);
+                      }
+                    }}
+                    disabled={surveyorsLoading || !!surveyorsError}
+                    allowClear
+                    allowCreate={false}
+                    className="w-full"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        );
-      }
+          );
+        }
 
-      // Special handling for insurer field
-      if (field.name === "insurer") {
-        return (
-          <div key={field.name} className="relative transition-all duration-200 rounded-lg py-1">
-            <div className="flex items-start gap-4">
-              <div className="w-[250px] flex-shrink-0 pt-2">
-                <Label>{field.label}{field.required && <span className="text-destructive">*</span>}</Label>
-              </div>
-              <div className="flex-1 max-w-full">
-                {insurersError && (
-                  <div className="text-sm text-red-600 bg-red-50 p-2 rounded mb-2">
-                    Failed to load insurers: {insurersError.message}
-                  </div>
-                )}
-                <SearchableSelect
-                  options={insurers.map((i) => i.name)}
-                  value={fieldValue || ""}
-                  placeholder={insurersLoading ? "Loading insurers..." : "Select or add insurer..."}
-                  searchPlaceholder="Search or add insurer..."
-                  onValueChange={(val) => {
-                    setValue(field.name, val);
-                    if (val !== (claim.form_data?.[field.name] || "")) {
-                      setPendingSaves((prev) => new Set([...prev, field.name]));
-                      setTimeout(() => saveField(field.name), 500);
-                    }
-                  }}
-                  allowClear
-                  allowCreate
-                  onCreateOption={async (val) => {
-                    await addInsurerMutation.mutateAsync(val);
-                  }}
-                  createOptionText="Add insurer"
-                  disabled={insurersLoading || addInsurerMutation.isPending || !!insurersError}
-                  className="w-full"
-                />
+        // Special handling for insurer field
+        if (field.name === "insurer") {
+          return (
+            <div key={field.name} className="relative transition-all duration-200 rounded-lg py-1">
+              <div className="flex items-start gap-4">
+                <div className="w-[250px] flex-shrink-0 pt-2">
+                  <Label>{field.label}{field.required && <span className="text-destructive">*</span>}</Label>
+                </div>
+                <div className="flex-1 max-w-full">
+                  {insurersError && (
+                    <div className="text-sm text-red-600 bg-red-50 p-2 rounded mb-2">
+                      Failed to load insurers: {insurersError.message}
+                    </div>
+                  )}
+                  <SearchableSelect
+                    options={insurers.map((i) => i.name)}
+                    value={fieldValue || ""}
+                    placeholder={insurersLoading ? "Loading insurers..." : "Select or add insurer..."}
+                    searchPlaceholder="Search or add insurer..."
+                    onValueChange={(val) => {
+                      setValue(field.name, val);
+                      const fieldKey = field.name as keyof Claim;
+                      if (val !== (claim[fieldKey] || "")) {
+                        setPendingSaves((prev) => new Set([...prev, field.name]));
+                        setTimeout(() => saveField(field.name), 500);
+                      }
+                    }}
+                    allowClear
+                    allowCreate
+                    onCreateOption={async (val) => {
+                      await addInsurerMutation.mutateAsync(val);
+                    }}
+                    createOptionText="Add insurer"
+                    disabled={insurersLoading || addInsurerMutation.isPending || !!insurersError}
+                    className="w-full"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        );
-      }
+          );
+        }
 
         // Regular select for other fields
         return (
@@ -466,7 +419,8 @@ useEffect(() => {
                   value={typeof fieldValue === "string" ? fieldValue : ""}
                   onValueChange={(value) => {
                     setValue(field.name, value);
-                    if (value !== (claim.form_data?.[field.name] || "")) {
+                    const fieldKey = field.name as keyof Claim;
+                    if (value !== (claim[fieldKey] || "")) {
                       setPendingSaves((prev) => new Set([...prev, field.name]));
                     }
                   }}
@@ -487,7 +441,11 @@ useEffect(() => {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors[field.name] && <p className="text-sm text-destructive mt-1">{errors[field.name]?.message as string}</p>}
+                {errors[field.name as keyof typeof errors] && (
+                  <p className="text-sm text-destructive mt-1">
+                    {String(errors[field.name as keyof typeof errors]?.message || '')}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -506,7 +464,8 @@ useEffect(() => {
                   checked={fieldValue || false}
                   onCheckedChange={(checked) => {
                     setValue(field.name, !!checked);
-                    if (checked !== (claim.form_data?.[field.name] || false)) {
+                    const fieldKey = field.name as keyof Claim;
+                    if (checked !== (claim[fieldKey] || false)) {
                       setPendingSaves((prev) => new Set([...prev, field.name]));
                       setTimeout(() => pendingSaves.has(field.name) && saveField(field.name), 500);
                     }
@@ -532,188 +491,100 @@ useEffect(() => {
     { name: "sum_insured", label: "Sum Insured", type: "number" as const, required: false },
     { name: "date_of_loss", label: "Date of Loss", type: "date" as const, required: false },
     { name: "loss_description", label: "Loss Description", type: "textarea" as const, required: false },
-    {name:"intimation_date", label:"Intimation Date", type:"date" as const, required:false},
+    { name: "intimation_date", label: "Intimation Date", type: "date" as const, required: false },
   ];
 
   const onSubmit = async (data: Record<string, any>) => {
-  console.log('🔥 onSubmit CALLED');
-  console.log('🔍 Claim object keys:', Object.keys(claim));
-  console.log('📋 claim.claim_number:', claim.claim_number);
-  console.log('📋 claim.report_number:', (claim as any).report_number);
-  console.log('🔑 claim.service_id:', (claim as any).service_id);
-  console.log('🔑 claim.company_id:', (claim as any).company_id);
-  console.log('🔑 claim.policy_type_id:', claim.policy_type_id);
-  
-  try {
-    // BETTER DETECTION: Check for service_id (VAS) or company_id (Client Reports)
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
+    console.log('🔥 onSubmit CALLED with data:', data);
     
-    console.log('💾 Detection results:', { isVASReport, isClientReport, tableName });
-    
-    // Rest of the code stays the same...
-    const { data: existingRecord, error: checkError } = await supabase
-      .from(tableName)
-      .select('id, form_data')
-      .eq('id', claim.id)
-      .maybeSingle();
-    
-    console.log('🔍 Existing record check:', { existingRecord, checkError });
-    
-    if (!existingRecord) {
-      console.error('❌ Record not found in', tableName);
-      toast.error(`Record not found in ${tableName} table`);
-      return;
-    }
-    
-    const existingFormData = existingRecord.form_data || {};
-    
-    const cleanedFormData: any = { 
-      ...existingFormData,
-      ...data,
-      field_labels: { 
-        ...(existingFormData.field_labels || {}),
-        ...fieldLabels 
-      }
-    };
-    
-    Object.keys(cleanedFormData).forEach(key => {
-      if (cleanedFormData[key] === undefined || cleanedFormData[key] === '') {
-        cleanedFormData[key] = null;
-      }
-    });
-    
-    console.log('✅ Final data to save:', cleanedFormData);
-    
-    const { error, data: result } = await supabase
-      .from(tableName)
-      .update({ form_data: cleanedFormData })
-      .eq("id", claim.id)
-      .select();
+    try {
+      const updateData: any = {
+        registration_id: data.registration_id || null,
+        insured_name: data.insured_name || null,
+        policy_number: data.policy_number || null,
+        sum_insured: data.sum_insured ? parseFloat(data.sum_insured) : null,
+        loss_date: data.date_of_loss || null,
+        loss_description: data.loss_description || null,
+        intimation_date: data.intimation_date || null,
+      };
+      
+      console.log('✅ Updating claims table with:', updateData);
+      
+      const { error, data: result } = await supabase
+        .from('claims')
+        .update(updateData)
+        .eq("id", claim.id)
+        .select();
 
-    console.log('📤 Supabase response:', { error, result });
-
-    if (error) throw error;
-    
-    toast.success("Policy details updated successfully!");
-  } catch (error) {
-    console.error("❌ Failed to update:", error);
-    toast.error("Failed to update policy details");
-  }
-};
-
-  const handleBrokerChange = async (brokerId: string) => {
-  if (brokerId === "new") {
-    setShowBrokerDialog(true);
-    return;
-  }
-
-  const previousBrokerId = selectedBrokerId;
-  setSelectedBrokerId(brokerId);
-
-  try {
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-
-  if (isClientReport) {
-    return null; // Don't render Policy Details for Client Reports
-  }
-
-    // For VAS/Client reports, store in form_data; for claims, use broker_id column
-    if (isVASReport || isClientReport) {
-      const existingFormData = claim.form_data || {};
-      const { error } = await supabase
-        .from(tableName)
-        .update({ 
-          form_data: { 
-            ...existingFormData, 
-            broker_id: brokerId || null 
-          } 
-        })
-        .eq("id", claim.id);
+      console.log('📤 Supabase response:', { error, result });
 
       if (error) throw error;
-    } else {
-      // Regular claims use broker_id column
+      
+      toast.success("Policy details updated successfully!");
+    } catch (error) {
+      console.error("❌ Failed to update:", error);
+      toast.error("Failed to update policy details");
+    }
+  };
+
+  const handleBrokerChange = async (brokerId: string) => {
+    if (brokerId === "new") {
+      setShowBrokerDialog(true);
+      return;
+    }
+
+    const previousBrokerId = selectedBrokerId;
+    setSelectedBrokerId(brokerId);
+
+    try {
       const { error } = await supabase
-        .from(tableName)
+        .from('claims')
         .update({ broker_id: brokerId || null })
         .eq("id", claim.id);
 
       if (error) throw error;
+      
+      toast.success("Broker assigned successfully");
+    } catch (error) {
+      console.error("Error:", error);
+      setSelectedBrokerId(previousBrokerId);
+      toast.error("Failed to assign broker");
     }
-    
-    toast.success("Broker assigned successfully");
-  } catch (error) {
-    console.error("[handleBrokerChange] Error:", error);
-    setSelectedBrokerId(previousBrokerId);
-    toast.error("Failed to assign broker");
-  }
-};
+  };
 
+  const handleCreateBroker = async () => {
+    if (!newBrokerData.name.trim()) {
+      toast.error("Broker name is required");
+      return;
+    }
 
-const handleCreateBroker = async () => {
-  if (!newBrokerData.name.trim()) {
-    toast.error("Broker name is required");
-    return;
-  }
+    try {
+      const { data, error } = await supabase
+        .from('brokers')
+        .insert([newBrokerData])
+        .select()
+        .single();
 
-  try {
-    const { data, error } = await supabase
-      .from('brokers')
-      .insert([newBrokerData])
-      .select()
-      .single();
+      if (error) throw error;
 
-    if (error) throw error;
-
-    setBrokers([...brokers, data]);
-    setSelectedBrokerId(data.id);
-    
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-    
-    // For VAS/Client reports, store in form_data; for claims, use broker_id column
-
-      if (isClientReport) {
-    return null; // Don't render Policy Details for Client Reports
-  }
-  
-    if (isVASReport || isClientReport) {
-      const existingFormData = claim.form_data || {};
+      setBrokers([...brokers, data]);
+      setSelectedBrokerId(data.id);
+      
       const { error: updateError } = await supabase
-        .from(tableName)
-        .update({ 
-          form_data: { 
-            ...existingFormData, 
-            broker_id: data.id 
-          } 
-        })
-        .eq("id", claim.id);
-
-      if (updateError) throw updateError;
-    } else {
-      const { error: updateError } = await supabase
-        .from(tableName)
+        .from('claims')
         .update({ broker_id: data.id })
         .eq("id", claim.id);
 
       if (updateError) throw updateError;
+
+      toast.success("Broker created and assigned successfully");
+      setShowBrokerDialog(false);
+      setNewBrokerData({ name: "", email: "", contact: "", company: "" });
+    } catch (error) {
+      console.error("Error creating broker:", error);
+      toast.error("Failed to create broker");
     }
-
-    toast.success("Broker created and assigned successfully");
-    setShowBrokerDialog(false);
-    setNewBrokerData({ name: "", email: "", contact: "", company: "" });
-  } catch (error) {
-    console.error("Error creating broker:", error);
-    toast.error("Failed to create broker");
-  }
-};
-
-
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -739,15 +610,6 @@ const handleCreateBroker = async () => {
                 {fields.map(renderField)}
               </div>
             </div>
-            {/* <div className="pt-4 border-t border-border/50">
-              <Button
-                type="submit"
-                disabled={updateClaimMutation.isPending}
-                className="w-full bg-slate-700 hover:bg-slate-800 text-white shadow-sm transition-all duration-200"
-              >
-                {updateClaimMutation.isPending ? "Saving..." : "Save Policy Details"}
-              </Button>
-            </div> */}
             
             {/* Broker/Agent Details Section */}
             <div className="space-y-6 pt-6 border-t border-border/50">
@@ -760,8 +622,8 @@ const handleCreateBroker = async () => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Broker Selection Dropdown */}
-                  <div className="space-y-2">
-                    <Label htmlFor="broker-select">Select Broker / Agent</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="broker-select">Select Broker / Agent</Label>
                   <Select 
                     value={selectedBrokerId} 
                     onValueChange={handleBrokerChange}
@@ -920,8 +782,8 @@ const handleCreateBroker = async () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 };
+
 export default PolicyDetailsForm;

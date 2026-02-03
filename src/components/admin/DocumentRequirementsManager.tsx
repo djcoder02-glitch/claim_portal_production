@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { usePolicyTypes } from "@/hooks/useClaims";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface PolicyType {
   id: string;
@@ -20,7 +22,33 @@ interface PolicyType {
 }
 
 export const DocumentRequirementsManager = () => {
-  const { data: allPolicyTypes = [], isLoading, refetch } = usePolicyTypes();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: allPolicyTypes = [], isLoading, refetch } = useQuery({
+    queryKey: ["company-policy-types"],
+    queryFn: async () => {
+      if (!user?.id) throw new Error("User not authenticated");
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.company_id) throw new Error('No company found');
+
+      const { data, error } = await supabase
+        .from("policy_types")
+        .select("*")
+        .eq('company_id', userData.company_id)
+        .eq('is_active', true)
+        .order("name");
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");
   const [documentInput, setDocumentInput] = useState("");
   const [documents, setDocuments] = useState<string[]>([]);

@@ -7,8 +7,10 @@ import { Plus, X, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export const ParsingConfigManager = () => {
+  const { user } = useAuth();
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>("");
   const [billFields, setBillFields] = useState<string[]>([]);
   const [policyFields, setPolicyFields] = useState<string[]>([]);
@@ -17,17 +19,31 @@ export const ParsingConfigManager = () => {
   
   const queryClient = useQueryClient();
 
-  // Fetch policy types
+  // Replace the policy types query
   const { data: policyTypes } = useQuery({
-    queryKey: ["policy-types"],
+    queryKey: ["company-policy-types"],
     queryFn: async () => {
+      if (!user?.id) throw new Error("User not authenticated");
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.company_id) throw new Error('No company found');
+
       const { data, error } = await supabase
         .from("policy_types")
         .select("*")
+        .eq('company_id', userData.company_id)
+        .eq('is_active', true)
         .order("name");
+        
       if (error) throw error;
       return data;
     },
+    enabled: !!user?.id,
   });
 
   // Load parsing config when policy type selected

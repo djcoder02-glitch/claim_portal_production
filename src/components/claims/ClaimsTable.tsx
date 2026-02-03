@@ -19,16 +19,16 @@ type SortKey = 'claim_number' | 'status' | 'created_at' | 'updated_at' | 'claim_
 type SortOrder = 'asc' | 'desc';
 type ViewMode = 'list' | 'grid';
 
-const statusColors = {
+const statusColors: Record<string, string> = {
+  draft: "rgb(107 114 128)",
   pending: "rgb(37 99 235)",
-  submitted: "hsl(var(--status-submitted))", 
-  under_review: "hsl(var(--status-under-review))",
-  approved: "hsl(var(--status-approved))",
-  rejected: "hsl(var(--status-rejected))",
-  paid: "hsl(var(--status-paid))",
-  //draft: "hsl(var(--muted))",
+  submitted: "rgb(245 158 11)", 
+  under_review: "rgb(59 130 246)",
+  approved: "rgb(16 185 129)",
+  rejected: "rgb(239 68 68)",
+  paid: "rgb(16 185 129)",
+  closed: "rgb(107 114 128)",
 };
-
 
 export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -40,14 +40,16 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
   const [policyTypeFilter, setPolicyTypeFilter] = useState("all");
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
-  const deleteClaim= useDeleteClaim();
+  const deleteClaim = useDeleteClaim();
 
   // Filter and sort claims
   const filteredAndSortedClaims = useMemo(() => {
     const filtered = claims.filter(claim => {
       const matchesSearch = 
-        claim.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        claim.claim_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (claim.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (claim.claim_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (claim.insured_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (claim.registration_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (claim.policy_types?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === "all" || claim.status === statusFilter;
@@ -74,13 +76,18 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
       let bValue: any = b[sortKey];
 
       if (sortKey === 'created_at' || sortKey === 'updated_at') {
-        aValue = new Date(aValue);
-        bValue = new Date(bValue);
+        aValue = new Date(aValue || 0);
+        bValue = new Date(bValue || 0);
       }
 
       if (sortKey === 'claim_amount') {
         aValue = aValue || 0;
         bValue = bValue || 0;
+      }
+
+      if (sortKey === 'claim_number' || sortKey === 'status') {
+        aValue = (aValue || '').toString();
+        bValue = (bValue || '').toString();
       }
 
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
@@ -108,10 +115,11 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
   };
 
   const formatStatus = (status: string) => {
+    if (!status) return 'Unknown';
     return status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  const uniqueStatuses = Array.from(new Set(claims.map(claim => claim.status)));
+  const uniqueStatuses = Array.from(new Set(claims.map(claim => claim.status).filter(Boolean)));
 
   // Shared header controls component
   const renderHeaderControls = () => (
@@ -239,25 +247,28 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                   <div className="space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-medium text-sm">{claim.title}</h3>
+                        <h3 className="font-medium text-sm">{claim.title || 'Untitled Claim'}</h3>
                         <p className="text-xs text-muted-foreground">#{claim.claim_number}</p>
                       </div>
                       <Badge 
                         variant="secondary" 
                         className="text-white text-xs"
-                        style={{ backgroundColor: statusColors[claim.status] || 'hsl(var(--muted))' }}
+                        style={{ backgroundColor: statusColors[claim.status] || statusColors.draft }}
                       >
                         {formatStatus(claim.status)}
                       </Badge>
                     </div>
                     <div className="space-y-2 text-xs text-muted-foreground">
-                      <div>Policy: {claim.policy_types?.name}</div>
+                      <div>Policy: {claim.policy_types?.name || 'N/A'}</div>
+                      <div>Insured: {claim.insured_name || 'N/A'}</div>
                       <div>Created: {format(new Date(claim.created_at), 'MMM dd, yyyy')}</div>
                       <div>Updated: {format(new Date(claim.updated_at), 'MMM dd, yyyy')}</div>
-                      <div>Intimation: {claim.intimation_date ? format(new Date(claim.intimation_date), 'MMM dd, yyyy') : 'Not set'}</div>
+                      {claim.intimation_date && (
+                        <div>Intimation: {format(new Date(claim.intimation_date), 'MMM dd, yyyy')}</div>
+                      )}
                       {claim.claim_amount && (
                         <div className="font-medium text-foreground">
-                          Amount: Rs. {claim.claim_amount.toLocaleString()}
+                          Amount: ₹{claim.claim_amount.toLocaleString()}
                         </div>
                       )}
                     </div>
@@ -292,7 +303,8 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                   </div>
                 </TableHead>
                 <TableHead>Policy Type</TableHead>
-                <TableHead>Assigned surveyor</TableHead>
+                <TableHead>Insured Name</TableHead>
+                <TableHead>Assigned Surveyor</TableHead>
                 <TableHead>Insurer</TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-muted/50"
@@ -303,6 +315,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                     {getSortIcon('updated_at')}
                   </div>
                 </TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -310,7 +323,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                 <TableRow key={claim.id} className="cursor-pointer hover:bg-muted/50">
                   <TableCell className="font-medium">
                     <Link to={`/claims/${claim.id}`} className="text-primary hover:underline">
-                      {claim.title}
+                      {claim.title || 'Untitled Claim'}
                     </Link>
                   </TableCell>
                   <TableCell>{claim.claim_number}</TableCell>
@@ -318,12 +331,13 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                     <Badge 
                       variant="secondary" 
                       className="text-white"
-                      style={{ backgroundColor: statusColors[claim.status] || 'hsl(var(--muted))' }}
+                      style={{ backgroundColor: statusColors[claim.status] || statusColors.draft }}
                     >
                       {formatStatus(claim.status)}
                     </Badge>
                   </TableCell>
                   <TableCell>{claim.policy_types?.name || '-'}</TableCell>
+                  <TableCell>{claim.insured_name || '-'}</TableCell>
                   <TableCell>{claim.surveyor_name || '-'}</TableCell>
                   <TableCell>{claim.insurer_name || '-'}</TableCell>
                   <TableCell>{format(new Date(claim.updated_at), 'MMM dd, yyyy')}</TableCell>
@@ -336,7 +350,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
                         <DropdownMenuItem asChild>
-                          <Link to={`/claims/${claim.id}`}>Edit Claim</Link>
+                          <Link to={`/claims/${claim.id}`}>View/Edit Claim</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive"
