@@ -11,7 +11,7 @@ interface AuthContextType {
   loading: boolean;
   userRole: UserRole | null;
   isAdmin: boolean;
-  isSuperadmin: boolean;
+  isSuperAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -20,7 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   userRole: null,
   isAdmin: false,
-  isSuperadmin: false,
+  isSuperAdmin: false,
 });
 
 export const useAuth = () => {
@@ -117,10 +117,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const isAdmin = userRole === 'admin';
-  const isSuperadmin = userRole === 'superadmin';
+  const isSuperAdmin = userRole === 'superadmin';
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin, isSuperadmin }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin, isSuperAdmin }}>
       {children}
     </AuthContext.Provider>
   );

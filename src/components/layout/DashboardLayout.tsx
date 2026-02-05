@@ -105,8 +105,8 @@ const getMainNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] => 
 /**
  * Secondary navigation items (shown under "Other" section)
  */
-const getOtherNavItems = (isAdmin: boolean): NavItem[] => {
-  if (isAdmin) {
+const getOtherNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] => {
+  if (isAdmin || isSuperadmin) {
     return [
       {
         title: "Profile",
@@ -258,8 +258,11 @@ useEffect(() => {
       });
   }
 }, [user?.id]);
+  console.log("User Role:", userStatus);
+  console.log("Is Superadmin:", isSuperadmin);
+  console.log("Is Admin:", isAdmin);
   const mainNavItems = getMainNavItems(isAdmin, isSuperadmin);
-  const otherNavItems = getOtherNavItems(isAdmin);
+  const otherNavItems = getOtherNavItems(isAdmin, isSuperadmin);
   const location = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);

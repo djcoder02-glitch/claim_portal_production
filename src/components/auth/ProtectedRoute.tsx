@@ -1,6 +1,8 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -8,7 +10,8 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRouteProps) => {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, isSuperAdmin } = useAuth();
+
 
   if (loading) {
     return (
@@ -22,7 +25,7 @@ export const ProtectedRoute = ({ children, requireAdmin = false }: ProtectedRout
     return <Navigate to="/auth" replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  if (requireAdmin && !isAdmin && !isSuperAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

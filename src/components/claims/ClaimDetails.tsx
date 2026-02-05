@@ -64,7 +64,8 @@ export const ClaimDetails = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadedBillOfEntry, setUploadedBillOfEntry] = useState<ClaimDocumentRow | null>(null);
   const queryClient = useQueryClient();
-  const {isAdmin, user} = useAuth();
+  const {isAdmin, user, isSuperAdmin} = useAuth();
+
 
   // console.log('[ClaimDetails] User:', user?.id);
   // console.log('[ClaimDetails] isAdmin:', isAdmin);
@@ -444,7 +445,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
     );
   }
 
-  if (claim && !isAdmin && claim.user_id !== user?.id) {
+  if (claim && !isAdmin && !isSuperAdmin && claim.user_id !== user?.id) {
   return (
     <div className="min-h-screen p-6 bg-gradient-background">
       <div className="max-w-7xl mx-auto text-center py-12">
