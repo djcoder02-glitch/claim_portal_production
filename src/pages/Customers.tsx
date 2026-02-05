@@ -40,7 +40,8 @@ interface Claim {
   status: string;
   created_at: string;
   form_data: any;
-  policy_types: { name: string } | null;
+  policy_type_id: string | null;
+  policy_types?: { name: string } | null;
 }
 
 interface Customer {
@@ -86,7 +87,16 @@ export const Customers = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('claims')
-        .select('id, claim_number, title, status, created_at, form_data, policy_types(name)')
+        .select(`
+          id, 
+          claim_number, 
+          title, 
+          status, 
+          created_at, 
+          form_data,
+          policy_type_id,
+          policy_types:policy_type_id(name)
+        `)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
