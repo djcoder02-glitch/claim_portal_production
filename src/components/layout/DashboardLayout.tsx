@@ -373,11 +373,8 @@ useEffect(() => {
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
                 <h2 className="text-lg font-bold text-gray-900 truncate">
-                  Gondalia
+                  Vantage Solutions
                 </h2>
-                <p className="text-xs text-gray-500 truncate">
-                  Insurance Surveyors
-                </p>
               </div>
             )}
           </div>

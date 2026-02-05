@@ -28,6 +28,7 @@ import { VASReportDetail } from "./pages/VASReportDetail";
 import { ClientReportDetail } from "./pages/ClientReportDetail";
 import {ImageGenerator} from "./pages/ImageGenerator"
 import CompanyManagement from "@/pages/CompanyManagement";
+import Notifications from "./pages/Notifications";
 
 const queryClient = new QueryClient();
 
@@ -130,10 +131,7 @@ const App = () => (
               <Route 
                 path="/notifications" 
                 element={
-                  <div className="p-8">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Notifications</h1>
-                    <p className="text-gray-600">Notification center coming soon...</p>
-                  </div>
+                  <Notifications />
                 } 
               />
             </Route>

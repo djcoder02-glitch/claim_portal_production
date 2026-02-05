@@ -66,7 +66,7 @@ const FIXED_TEXT = {
   accountNumber: "001605050333",
   ifscCode: "ICIC0000186",
   feeTableNote: "** All the below amounts are in Indian Rupees **",
-  signatureName: "RAJESH GONDALIA",
+  signatureName: "RAJESH",
   advanceReceiptHeader: "ADVANCE RECEIPT",
 };
 
