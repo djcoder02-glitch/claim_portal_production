@@ -29,6 +29,8 @@ import { ClientReportDetail } from "./pages/ClientReportDetail";
 import {ImageGenerator} from "./pages/ImageGenerator"
 import CompanyManagement from "@/pages/CompanyManagement";
 import Notifications from "./pages/Notifications";
+import { Agents } from "./pages/Agents";
+import { AgentsBrokers } from "./pages/AgentsBrokers";
 
 const queryClient = new QueryClient();
 
@@ -104,7 +106,7 @@ const App = () => (
               <Route path="/help" element={<HelpCenter />} />
               
               {/* Agents and Brokers */}
-              <Route path="/agents-brokers" element={<Brokers />} />
+              <Route path="/agents-brokers" element={<AgentsBrokers />} />
               
               {/* Customers */}
               <Route path="/customers" element={<Customers />} />

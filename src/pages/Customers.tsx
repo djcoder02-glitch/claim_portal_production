@@ -39,9 +39,10 @@ interface Claim {
   title: string;
   status: string;
   created_at: string;
-  form_data: any;
+  insured_name: string | null;
+  surveyor_name: string | null;
   policy_type_id: string | null;
-  policy_types?: { name: string } | null;
+  policy_types: { name: string } | null;
 }
 
 interface Customer {
@@ -53,13 +54,16 @@ interface Customer {
 
 interface CustomerContact {
   id: string;
-  customer_name: string;
+  company_id?: string;
+  name: string;
+  customer_name?: string;
   phone: string | null;
   email: string | null;
   address: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
+  is_active?: boolean;
 }
 
 
@@ -88,14 +92,15 @@ export const Customers = () => {
       const { data, error } = await supabase
         .from('claims')
         .select(`
-          id, 
-          claim_number, 
-          title, 
-          status, 
-          created_at, 
-          form_data,
+          id,
+          claim_number,
+          title,
+          status,
+          created_at,
+          insured_name,
+          surveyor_name,
           policy_type_id,
-          policy_types:policy_type_id(name)
+          policy_types(name)
         `)
         .order('created_at', { ascending: false });
       
@@ -109,7 +114,7 @@ export const Customers = () => {
     queryKey: ['customer-contacts'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('customer_contacts')
+        .from('customers')
         .select('*');
       
       if (error) throw error;
@@ -119,7 +124,7 @@ export const Customers = () => {
 
   // Get contact for specific customer
   const getCustomerContact = (customerName: string) => {
-    return customerContacts.find(c => c.customer_name === customerName);
+    return customerContacts.find(c => c.name === customerName || c.customer_name === customerName);
   };
   
 
@@ -128,7 +133,7 @@ export const Customers = () => {
     const customerMap = new Map<string, Customer>();
 
     claims.forEach(claim => {
-      const insuredName = claim.form_data?.insured_name;
+      const insuredName = claim.insured_name;
       if (!insuredName || typeof insuredName !== 'string') return;
 
       const normalizedName = insuredName.trim();
@@ -160,18 +165,17 @@ export const Customers = () => {
     );
   }, [claims]);
 
-  
-
   // Filter customers based on search
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
   // Get claims for specific customer
   const customerClaims = useMemo(() => {
     if (!viewClaimsDialog.customerName) return [];
     
     return claims.filter(claim => 
-      claim.form_data?.insured_name?.trim() === viewClaimsDialog.customerName
+      claim.insured_name?.trim() === viewClaimsDialog.customerName
     );
   }, [claims, viewClaimsDialog.customerName]);
 
@@ -197,29 +201,36 @@ export const Customers = () => {
     mutationFn: async ({ customerName, data }: { customerName: string; data: typeof contactFormData }) => {
       const existingContact = getCustomerContact(customerName);
       
+      // Get current user's company_id
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', userData?.user?.id)
+        .single();
+      
       if (existingContact) {
         // Update existing
         const { error } = await supabase
-          .from('customer_contacts')
+          .from('customers')
           .update({
             phone: data.phone || null,
             email: data.email || null,
             address: data.address || null,
-            notes: data.notes || null,
           })
-          .eq('customer_name', customerName);
+          .eq('name', customerName);
         
         if (error) throw error;
       } else {
         // Insert new
         const { error } = await supabase
-          .from('customer_contacts')
+          .from('customers')
           .insert([{
-            customer_name: customerName,
+            company_id: profile?.company_id,
+            name: customerName,
             phone: data.phone || null,
             email: data.email || null,
             address: data.address || null,
-            notes: data.notes || null,
           }]);
         
         if (error) throw error;
@@ -235,6 +246,7 @@ export const Customers = () => {
       toast.error("Failed to save contact: " + error.message);
     },
   });
+
   const resetContactForm = () => {
     setContactFormData({
       phone: "",
@@ -483,7 +495,7 @@ export const Customers = () => {
                       <TableCell>{claim.title}</TableCell>
                       <TableCell>{claim.policy_types?.name || '—'}</TableCell>
                       <TableCell>
-                        {claim.form_data?.assigned_surveyor || '—'}
+                        {claim.surveyor_name || '—'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(claim.status)}>
@@ -501,6 +513,7 @@ export const Customers = () => {
           </div>
         </DialogContent>
       </Dialog>
+
       {/* Contact Details Dialog */}
       <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
         <DialogContent className="max-w-md">

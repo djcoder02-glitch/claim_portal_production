@@ -13,10 +13,10 @@ export const useSurveyors = () => {
       try {
         const { data, error } = await supabase
           .from("surveyors")
-          .select("id, name, is_active")
+          .select("id, company_id, name, email, phone, address, is_active, created_at, updated_at")
           .eq("is_active", true)
           .order("name");
-          
+              
         console.log("[useSurveyors] Raw response:", { data, error });
         
         if (error) {

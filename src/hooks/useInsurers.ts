@@ -11,13 +11,12 @@ export const useInsurers = () => {
     queryFn: async () => {
       console.log("[useInsurers] Starting query...");
       
-      try {
+    try {
         const { data, error } = await supabase
           .from("insurers")
-          .select("id, name, is_active, created_at")
+          .select("id, company_id, name, email, phone, address, is_active, created_at, updated_at")
           .eq("is_active", true)
           .order("name");
-
         console.log("[useInsurers] Raw response:", { data, error });
 
         if (error) {
@@ -46,9 +45,21 @@ export const useAddInsurer = () => {
       console.log("[useAddInsurer] Adding insurer:", insurerName);
       
       try {
+        // Get current user's company_id
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: userData } = await supabase
+          .from("users")
+          .select("company_id")
+          .eq("id", user?.id)
+          .single();
+
         const { data, error } = await supabase
           .from("insurers")
-          .insert([{ name: insurerName.trim(), is_active: true }])
+          .insert([{ 
+            name: insurerName.trim(), 
+            is_active: true,
+            company_id: userData?.company_id 
+          }])
           .select()
           .single();
 

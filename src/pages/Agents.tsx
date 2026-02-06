@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { Loader2, Plus, Edit, Trash2, Mail, Phone, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-interface Broker {
+interface Agent {
   id: string;
   company_id: string;
   name: string;
@@ -38,12 +38,12 @@ interface Broker {
   updated_at: string;
 }
 
-export const Brokers = () => {
+export const Agents = () => {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [selectedBroker, setSelectedBroker] = useState<Broker | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   const [formData, setFormData] = useState({
@@ -53,24 +53,24 @@ export const Brokers = () => {
     address: "",
   });
 
-  // Fetch brokers
-  const { data: brokers = [], isLoading } = useQuery({
-    queryKey: ['brokers'],
+  // Fetch agents
+  const { data: agents = [], isLoading } = useQuery({
+    queryKey: ['agents'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('brokers')
+        .from('agents')
         .select('id, company_id, name, email, phone, address, is_active, created_at, updated_at')
         .eq('is_active', true)
         .order('name');
       
       if (error) throw error;
-      return data as Broker[];
+      return data as Agent[];
     },
   });
 
-  // Create broker mutation
-  const createBroker = useMutation({
-    mutationFn: async (newBroker: Omit<Broker, 'id' | 'created_at' | 'updated_at' | 'company_id' | 'is_active'>) => {
+  // Create agent mutation
+  const createAgent = useMutation({
+    mutationFn: async (newAgent: Omit<Agent, 'id' | 'created_at' | 'updated_at' | 'company_id' | 'is_active'>) => {
       // Get current user's company_id
       const { data: userData } = await supabase.auth.getUser();
       const { data: profile } = await supabase
@@ -80,9 +80,9 @@ export const Brokers = () => {
         .single();
 
       const { data, error } = await supabase
-        .from('brokers')
+        .from('agents')
         .insert([{
-          ...newBroker,
+          ...newAgent,
           company_id: profile?.company_id,
           is_active: true
         }])
@@ -93,22 +93,22 @@ export const Brokers = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['brokers'] });
-      toast.success("Broker created successfully");
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success("Agent created successfully");
       setIsCreateDialogOpen(false);
       resetForm();
     },
     onError: (error) => {
-      toast.error("Failed to create broker: " + error.message);
+      toast.error("Failed to create agent: " + error.message);
     },
   });
 
-  // Update broker mutation
-  const updateBroker = useMutation({
-    mutationFn: async (updatedBroker: Partial<Broker> & { id: string }) => {
-      const { id, ...updateData } = updatedBroker;
+  // Update agent mutation
+  const updateAgent = useMutation({
+    mutationFn: async (updatedAgent: Partial<Agent> & { id: string }) => {
+      const { id, ...updateData } = updatedAgent;
       const { data, error } = await supabase
-        .from('brokers')
+        .from('agents')
         .update(updateData)
         .eq('id', id)
         .select()
@@ -118,35 +118,35 @@ export const Brokers = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['brokers'] });
-      toast.success("Broker updated successfully");
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success("Agent updated successfully");
       setIsEditDialogOpen(false);
-      setSelectedBroker(null);
+      setSelectedAgent(null);
       resetForm();
     },
     onError: (error) => {
-      toast.error("Failed to update broker: " + error.message);
+      toast.error("Failed to update agent: " + error.message);
     },
   });
 
-  // Delete broker mutation (soft delete)
-  const deleteBroker = useMutation({
-    mutationFn: async (brokerId: string) => {
+  // Delete agent mutation (soft delete)
+  const deleteAgent = useMutation({
+    mutationFn: async (agentId: string) => {
       const { error } = await supabase
-        .from('brokers')
+        .from('agents')
         .update({ is_active: false })
-        .eq('id', brokerId);
+        .eq('id', agentId);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['brokers'] });
-      toast.success("Broker deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast.success("Agent deleted successfully");
       setIsDeleteDialogOpen(false);
-      setSelectedBroker(null);
+      setSelectedAgent(null);
     },
     onError: (error) => {
-      toast.error("Failed to delete broker: " + error.message);
+      toast.error("Failed to delete agent: " + error.message);
     },
   });
 
@@ -162,10 +162,10 @@ export const Brokers = () => {
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      toast.error("Broker name is required");
+      toast.error("Agent name is required");
       return;
     }
-    createBroker.mutate({
+    createAgent.mutate({
       name: formData.name,
       email: formData.email || null,
       phone: formData.phone || null,
@@ -175,13 +175,13 @@ export const Brokers = () => {
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBroker) return;
+    if (!selectedAgent) return;
     if (!formData.name.trim()) {
-      toast.error("Broker name is required");
+      toast.error("Agent name is required");
       return;
     }
-    updateBroker.mutate({
-      id: selectedBroker.id,
+    updateAgent.mutate({
+      id: selectedAgent.id,
       name: formData.name,
       email: formData.email || null,
       phone: formData.phone || null,
@@ -189,26 +189,26 @@ export const Brokers = () => {
     });
   };
 
-  const handleEdit = (broker: Broker) => {
-    setSelectedBroker(broker);
+  const handleEdit = (agent: Agent) => {
+    setSelectedAgent(agent);
     setFormData({
-      name: broker.name,
-      email: broker.email || "",
-      phone: broker.phone || "",
-      address: broker.address || "",
+      name: agent.name,
+      email: agent.email || "",
+      phone: agent.phone || "",
+      address: agent.address || "",
     });
     setIsEditDialogOpen(true);
   };
 
-  const handleDelete = (broker: Broker) => {
-    setSelectedBroker(broker);
+  const handleDelete = (agent: Agent) => {
+    setSelectedAgent(agent);
     setIsDeleteDialogOpen(true);
   };
 
-  const filteredBrokers = brokers.filter(broker =>
-    broker.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    broker.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    broker.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAgents = agents.filter(agent =>
+    agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    agent.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    agent.phone?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -216,12 +216,12 @@ export const Brokers = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Brokers</h1>
-          <p className="text-gray-600 mt-1">Manage insurance brokers</p>
+          <h1 className="text-3xl font-bold text-gray-900">Agents</h1>
+          <p className="text-gray-600 mt-1">Manage insurance agents</p>
         </div>
         <Button onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
-          Add Broker
+          Add Agent
         </Button>
       </div>
 
@@ -229,27 +229,27 @@ export const Brokers = () => {
       <Card>
         <CardContent className="pt-6">
           <Input
-            placeholder="Search brokers by name, email, or phone..."
+            placeholder="Search agents by name, email, or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </CardContent>
       </Card>
 
-      {/* Brokers Table */}
+      {/* Agents Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Brokers ({filteredBrokers.length})</CardTitle>
+          <CardTitle>All Agents ({filteredAgents.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
-          ) : filteredBrokers.length === 0 ? (
+          ) : filteredAgents.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">
-                {searchTerm ? "No brokers found" : "No brokers yet. Add one to get started!"}
+                {searchTerm ? "No agents found" : "No agents yet. Add one to get started!"}
               </p>
             </div>
           ) : (
@@ -264,38 +264,38 @@ export const Brokers = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredBrokers.map((broker) => (
-                  <TableRow key={broker.id}>
-                    <TableCell className="font-medium">{broker.name}</TableCell>
+                {filteredAgents.map((agent) => (
+                  <TableRow key={agent.id}>
+                    <TableCell className="font-medium">{agent.name}</TableCell>
                     <TableCell>
                       <div className="space-y-1">
-                        {broker.email && (
+                        {agent.email && (
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Mail className="w-3 h-3" />
-                            {broker.email}
+                            {agent.email}
                           </div>
                         )}
-                        {broker.phone && (
+                        {agent.phone && (
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <Phone className="w-3 h-3" />
-                            {broker.phone}
+                            {agent.phone}
                           </div>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {broker.address ? (
+                      {agent.address ? (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <MapPin className="w-3 h-3" />
-                          {broker.address}
+                          {agent.address}
                         </div>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={broker.is_active ? "default" : "secondary"}>
-                        {broker.is_active ? "Active" : "Inactive"}
+                      <Badge variant={agent.is_active ? "default" : "secondary"}>
+                        {agent.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -303,14 +303,14 @@ export const Brokers = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleEdit(broker)}
+                          onClick={() => handleEdit(agent)}
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(broker)}
+                          onClick={() => handleDelete(agent)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -328,9 +328,9 @@ export const Brokers = () => {
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New Broker</DialogTitle>
+            <DialogTitle>Add New Agent</DialogTitle>
             <DialogDescription>
-              Enter the details of the new broker
+              Enter the details of the new agent
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateSubmit}>
@@ -341,7 +341,7 @@ export const Brokers = () => {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter broker name"
+                  placeholder="Enter agent name"
                   required
                 />
               </div>
@@ -352,7 +352,7 @@ export const Brokers = () => {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="broker@example.com"
+                  placeholder="agent@example.com"
                 />
               </div>
               <div className="space-y-2">
@@ -387,9 +387,9 @@ export const Brokers = () => {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createBroker.isPending}>
-                {createBroker.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Create Broker
+              <Button type="submit" disabled={createAgent.isPending}>
+                {createAgent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Create Agent
               </Button>
             </DialogFooter>
           </form>
@@ -400,9 +400,9 @@ export const Brokers = () => {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Broker</DialogTitle>
+            <DialogTitle>Edit Agent</DialogTitle>
             <DialogDescription>
-              Update the broker details
+              Update the agent details
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEditSubmit}>
@@ -413,7 +413,7 @@ export const Brokers = () => {
                   id="edit-name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter broker name"
+                  placeholder="Enter agent name"
                   required
                 />
               </div>
@@ -424,7 +424,7 @@ export const Brokers = () => {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="broker@example.com"
+                  placeholder="agent@example.com"
                 />
               </div>
               <div className="space-y-2">
@@ -454,15 +454,15 @@ export const Brokers = () => {
                 variant="outline"
                 onClick={() => {
                   setIsEditDialogOpen(false);
-                  setSelectedBroker(null);
+                  setSelectedAgent(null);
                   resetForm();
                 }}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={updateBroker.isPending}>
-                {updateBroker.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Update Broker
+              <Button type="submit" disabled={updateAgent.isPending}>
+                {updateAgent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Update Agent
               </Button>
             </DialogFooter>
           </form>
@@ -473,9 +473,9 @@ export const Brokers = () => {
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Broker</DialogTitle>
+            <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{selectedBroker?.name}"? This action cannot be undone.
+              Are you sure you want to delete "{selectedAgent?.name}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -483,17 +483,17 @@ export const Brokers = () => {
               variant="outline"
               onClick={() => {
                 setIsDeleteDialogOpen(false);
-                setSelectedBroker(null);
+                setSelectedAgent(null);
               }}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={() => selectedBroker && deleteBroker.mutate(selectedBroker.id)}
-              disabled={deleteBroker.isPending}
+              onClick={() => selectedAgent && deleteAgent.mutate(selectedAgent.id)}
+              disabled={deleteAgent.isPending}
             >
-              {deleteBroker.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {deleteAgent.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Delete
             </Button>
           </DialogFooter>
@@ -503,4 +503,5 @@ export const Brokers = () => {
   );
 };
 
-export default Brokers;
+export default Agents;
+
