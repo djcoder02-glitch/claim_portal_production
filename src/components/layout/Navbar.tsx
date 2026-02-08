@@ -160,14 +160,14 @@ export const Navbar = ({
             </Button>
 
             {/* Page Title & Subtitle (Hidden on mobile) */}
-            {title && (
+            {/* {title && (
               <div className="hidden md:block">
                 <h1 className="text-xl font-bold text-gray-900">{title}</h1>
                 {subtitle && (
                   <p className="text-sm text-gray-500">{subtitle}</p>
                 )}
               </div>
-            )}
+            )} */}
           </div>
 
           {/* Center Section: Search Bar */}

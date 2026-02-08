@@ -370,46 +370,39 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
 ========================= */
 
 function getDynamicSectionsFromClaim(claim: Claim): ReportSection[] {
+  const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
+  const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
+
   const sections: ReportSection[] = [
     { id: "overview", name: "Overview", content: null, isVisible: true, order: 1 },
-    { 
-      id: "policy-details", 
-      name: "Policy Details", 
-      content: null, 
-      isVisible: sectionHasContent({ id: "policy-details", name: "Policy Details", content: null, isVisible: true, order: 2 }, claim), 
-      order: 2 
-    },
+    { id: "policy-details", name: "Policy Details", content: null, isVisible: true, order: 2 },
   ];
 
-  let currentOrder = 3;
-
-  // Add additional information sub-sections
-  const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
-  additionalInfoSections.forEach((infoSection) => {
-    const section: ReportSection = {
-      id: infoSection.id,
-      name: infoSection.name,
-      content: null,
-      isVisible: true,
-      order: currentOrder++,
-    };
-    section.isVisible = sectionHasContent(section, claim);
-    sections.push(section);
-  });
+  // Add additional info sub-sections as separate sections
+  additionalInfoSections
+    .sort((a, b) => a.order - b.order)
+    .forEach((section, index) => {
+      sections.push({
+        id: section.id,
+        name: section.name,
+        content: null,
+        isVisible: true,
+        order: 3 + index,
+      });
+    });
 
   // Add dynamic sections
-  const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
-  metas.forEach((meta) => {
-    const section: ReportSection = {
-      id: meta.id,
-      name: meta.name || `Section ${currentOrder}`,
-      content: null,
-      isVisible: true,
-      order: currentOrder++,
-    };
-    section.isVisible = sectionHasContent(section, claim);
-    sections.push(section);
-  });
+  metas
+    .sort((a, b) => a.order - b.order)
+    .forEach((meta, index) => {
+      sections.push({
+        id: meta.id,
+        name: meta.name,
+        content: null,
+        isVisible: true,
+        order: 3 + additionalInfoSections.length + index,
+      });
+    });
 
   return sections;
 }
