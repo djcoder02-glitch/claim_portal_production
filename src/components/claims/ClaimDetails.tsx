@@ -83,7 +83,7 @@ const handlePolicyDocumentExtracted = async (extractedData: Record<string, any>)
   
   try {
     // Get current form data
-    const currentFormData = claim?.form_data || {};
+    const currentFormData = claim?.sections || {};
     
     // Merge with extracted data
     const updatedFormData = {
@@ -95,7 +95,7 @@ const handlePolicyDocumentExtracted = async (extractedData: Record<string, any>)
     await updateClaimSilentMutation.mutateAsync({
       id: claim!.id,
       updates: {
-        form_data: updatedFormData as Json
+        sections: updatedFormData as Json
       }
     });
 
@@ -116,7 +116,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
   
   try {
     // Get current form data
-    const currentFormData = claim?.form_data || {};
+    const currentFormData = claim?.sections || {};
     
     // Merge with extracted data
     const updatedFormData = {
@@ -128,7 +128,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
     await updateClaimSilentMutation.mutateAsync({
       id: claim!.id,
       updates: {
-        form_data: updatedFormData as Json
+        sections: updatedFormData as Json
       }
     });
 
@@ -257,7 +257,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
 
     try {
       // Get current form data and merge with extracted data
-      const currentFormData = (claim?.form_data as Record<string, unknown>) || {};
+      const currentFormData = (claim?.sections as Record<string, unknown>) || {};
       const updatedFormData = {
         ...currentFormData,
         ...mappedData
@@ -267,7 +267,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
       await updateClaimSilentMutation.mutateAsync({
         id: claim!.id,
         updates: {
-          form_data: updatedFormData as unknown as Json
+          sections: updatedFormData as unknown as Json
         }
       });
 

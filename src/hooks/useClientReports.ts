@@ -14,7 +14,7 @@ export interface ClientReport {
   status: string;
   report_amount: number | null;
   intimation_date: string | null;
-  form_data: Record<string, unknown>;
+  sections: Record<string, unknown>;
   surveyor_name: string | null;
   surveyor_id: string | null;
   created_at: string;
@@ -92,7 +92,7 @@ export const useCreateClientReport = () => {
       title: string;
       report_amount?: number;
       intimation_date?: string;
-      form_data?: Record<string, unknown>;
+      sections?: Record<string, unknown>;
     }) => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
@@ -107,7 +107,7 @@ export const useCreateClientReport = () => {
           title: reportData.title,
           user_id: user.id,
           intimation_date: reportData.intimation_date || null,
-          form_data: reportData.form_data || null,
+          sections: reportData.sections || null,
           report_amount: reportData.report_amount || null,
           status: 'pending'
         })

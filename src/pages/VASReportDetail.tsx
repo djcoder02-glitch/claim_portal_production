@@ -90,7 +90,7 @@ const handleBackClick = () => {
     ...report,
     claim_number: report.report_number,
     policy_type_id: report.service_id,
-    form_data: report.form_data || {}, // Make sure this exists
+    sections: report.sections || {}, // Make sure this exists
     broker_id: report.broker_id || null, // Preserve broker_id if it exists
     policy_types: {
       id: report.service_id,

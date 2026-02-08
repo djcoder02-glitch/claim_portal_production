@@ -142,18 +142,18 @@ export const Assessment = ({ claim }: Props) => {
 
   // ---------- defaults (blank-safe) ----------
   const defaults: AssessmentRoot = useMemo(() => {
-    const existing = (claim.form_data as any)?.assessment as AssessmentRoot["assessment"] | undefined;
+    const existing = (claim.sections as any)?.assessment as AssessmentRoot["assessment"] | undefined;
 
     const headerDefaults: HeaderFields = existing?.header ?? {
       report_ref_no: claim.claim_number || "",
       insured_and_regn:
-        `${(claim.form_data as any)?.insured_name ?? ""}`.trim() +
-        (claim.form_data?.vehicle_regn_no ? `, ${claim.form_data.vehicle_regn_no}` : ""),
-      policy_inception_date: (claim.form_data as any)?.policy_inception_date ?? "",
-      registration_date: (claim.form_data as any)?.registration_date ?? "",
-      date_of_accident: (claim.form_data as any)?.date_of_accident ?? "",
-      on_road_age: (claim.form_data as any)?.on_road_age ?? "",
-      age_depreciation_rate: (claim.form_data as any)?.age_depreciation_rate ?? "",
+        `${(claim.sections as any)?.insured_name ?? ""}`.trim() +
+        (claim.sections?.vehicle_regn_no ? `, ${claim.sections.vehicle_regn_no}` : ""),
+      policy_inception_date: (claim.sections as any)?.policy_inception_date ?? "",
+      registration_date: (claim.sections as any)?.registration_date ?? "",
+      date_of_accident: (claim.sections as any)?.date_of_accident ?? "",
+      on_road_age: (claim.sections as any)?.on_road_age ?? "",
+      age_depreciation_rate: (claim.sections as any)?.age_depreciation_rate ?? "",
       annotation:
         existing?.header?.annotation ?? "Annotation to below assessment calculations...",
     };
@@ -429,13 +429,13 @@ export const Assessment = ({ claim }: Props) => {
       spareSaveTimer.current = setTimeout(async () => {
         await updateClaim.mutateAsync({
           id: claim.id,
-          updates: { form_data: { ...claim.form_data, assessment: getValues().assessment } },
+          updates: { sections: { ...claim.sections, assessment: getValues().assessment } },
         });
         setSavingSpare(false);
       }, 1000);
     });
     return () => sub.unsubscribe();
-  }, [watch, claim.id, claim.form_data, getValues, updateClaim]);
+  }, [watch, claim.id, claim.sections, getValues, updateClaim]);
 
   // watch labour subtree
   useEffect(() => {
@@ -446,13 +446,13 @@ export const Assessment = ({ claim }: Props) => {
       labourSaveTimer.current = setTimeout(async () => {
         await updateClaim.mutateAsync({
           id: claim.id,
-          updates: { form_data: { ...claim.form_data, assessment: getValues().assessment } },
+          updates: { sections: { ...claim.sections, assessment: getValues().assessment } },
         });
         setSavingLabour(false);
       }, 1000);
     });
     return () => sub.unsubscribe();
-  }, [watch, claim.id, claim.form_data, getValues, updateClaim]);
+  }, [watch, claim.id, claim.sections, getValues, updateClaim]);
 
   // watch summary (only salvage/policy_excess are editable)
   useEffect(() => {
@@ -464,18 +464,18 @@ export const Assessment = ({ claim }: Props) => {
       summarySaveTimer.current = setTimeout(async () => {
         await updateClaim.mutateAsync({
           id: claim.id,
-          updates: { form_data: { ...claim.form_data, assessment: getValues().assessment } },
+          updates: { sections: { ...claim.sections, assessment: getValues().assessment } },
         });
         setSavingSummary(false);
       }, 1000);
     });
     return () => sub.unsubscribe();
-  }, [watch, claim.id, claim.form_data, getValues, updateClaim]);
+  }, [watch, claim.id, claim.sections, getValues, updateClaim]);
 
   const handleManualSave = async () => {
     await updateClaim.mutateAsync({
       id: claim.id,
-      updates: { form_data: { ...claim.form_data, assessment: getValues().assessment } },
+      updates: { sections: { ...claim.sections, assessment: getValues().assessment } },
     });
     toast.success("Assessment saved");
   };

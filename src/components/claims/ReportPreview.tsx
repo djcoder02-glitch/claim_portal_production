@@ -65,6 +65,13 @@ interface ClaimDocument {
   uploaded_via_link?: boolean;
 }
 
+interface AdditionalInfoSection {
+  id: string;
+  name: string;
+  order: number;
+  fields: Array<{ name: string; label: string }>;
+}
+
 /* =========================
    Config
 ========================= */
@@ -89,23 +96,14 @@ const formatFileSize = (bytes: number) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 };
 
-const money = (v: any) => {
-  const n = Number(v);
-  if (!isFinite(n)) return v ?? "-";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(n);
-};
-
 /* =========================
    Helper: Check if Section Has Content
 ========================= */
 
 const sectionHasContent = (section: ReportSection, claim: Claim): boolean => {
-  const formData = claim.form_data || {};
-  const metas = (claim.form_data?.dynamic_sections_metadata as any[]) || [];
+  const sectionsData = claim.sections || {};
+  const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
+  const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
 
   // Overview always has content
   if (section.id === "overview") {
@@ -114,12 +112,25 @@ const sectionHasContent = (section: ReportSection, claim: Claim): boolean => {
 
   // Check policy details
   if (section.id === "policy-details") {
-    const policyFields = [
-      "registration_id", "insured_name", "insurer", "assigned_surveyor",
-      "policy_number", "sum_insured", "date_of_loss", "loss_description",
-    ];
-    return policyFields.some(k => {
-      const val = (formData as any)[k];
+    return !!(
+      claim.registration_id || 
+      claim.insured_name || 
+      claim.insurer_name ||
+      claim.surveyor_name ||
+      claim.policy_number || 
+      claim.sum_insured || 
+      claim.loss_date || 
+      claim.loss_description
+    );
+  }
+
+  // Check additional information sub-sections
+  const additionalInfoSection = additionalInfoSections.find(s => s.id === section.id);
+  if (additionalInfoSection) {
+    const fields = additionalInfoSection.fields || [];
+    
+    return fields.some(field => {
+      const val = sectionsData[field.name];
       return val != null && String(val).trim() !== "";
     });
   }
@@ -128,17 +139,14 @@ const sectionHasContent = (section: ReportSection, claim: Claim): boolean => {
   const meta = metas.find((m) => m.id === section.id);
   if (!meta) return false;
 
-  // Check if has fields with data
   const hasFields = meta.fields?.some((f: any) => {
-    const val = formData[f.name];
+    const val = sectionsData[f.name];
     return val != null && String(val).trim() !== "";
   });
 
-  // Check if has images
   const imageKey = `${section.id}_images`;
-  const hasImages = Array.isArray(formData[imageKey]) && formData[imageKey].some(Boolean);
+  const hasImages = Array.isArray(sectionsData[imageKey]) && sectionsData[imageKey].some(Boolean);
 
-  // Check if has tables with data
   const hasTables = meta.tables?.some((table: any) => 
     Array.isArray(table.data) && table.data.length > 0
   );
@@ -155,8 +163,9 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
   const style = { transform: CSS.Transform.toString(transform), transition };
 
   const renderSectionContent = (section: ReportSection) => {
-    const formData = claim.form_data || {};
-    const metas = (claim.form_data?.dynamic_sections_metadata as any[]) || [];
+    const sectionsData = claim.sections || {};
+    const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
+    const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
 
     // --- Static: Overview ---
     if (section.id === "overview") {
@@ -186,28 +195,51 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
 
     // --- Static: Policy Details ---
     if (section.id === "policy-details") {
-      const policyFields = [
-        "registration_id",
-        "insured_name",
-        "insurer",
-        "assigned_surveyor",
-        "policy_number",
-        "sum_insured",
-        "date_of_loss",
-        "loss_description",
-      ];
-      const rows = policyFields
-        .map((k) => [k, (formData as any)[k]] as const)
-        .filter(([_, v]) => v != null && String(v).trim() !== "");
+      const policyData = [
+        ["Registration ID", claim.registration_id],
+        ["Insured Name", claim.insured_name],
+        ["Insurer", claim.insurer_name],
+        ["Assigned Surveyor", claim.surveyor_name],
+        ["Policy Number", claim.policy_number],
+        ["Sum Insured", claim.sum_insured],
+        ["Date of Loss", claim.loss_date ? format(new Date(claim.loss_date), "MMM dd, yyyy") : null],
+        ["Loss Description", claim.loss_description],
+      ].filter(([_, v]) => v != null && String(v).trim() !== "");
 
-      if (rows.length === 0) return null;
+      if (policyData.length === 0) return null;
 
       return (
         <div className="space-y-2">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex justify-between">
-              <span className="text-muted-foreground capitalize">{labelize(k)}</span>
-              <span className="font-medium">{String(v)}</span>
+          {policyData.map(([label, value]) => (
+            <div key={label} className="flex justify-between">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="font-medium">{String(value)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // --- Additional Information Sub-sections ---
+    const additionalInfoSection = additionalInfoSections.find(s => s.id === section.id);
+    if (additionalInfoSection) {
+      const fields = additionalInfoSection.fields || [];
+      
+      const fieldData = fields
+        .map(field => {
+          const value = sectionsData[field.name];
+          return { label: field.label, value };
+        })
+        .filter(({ value }) => value != null && String(value).trim() !== "");
+
+      if (fieldData.length === 0) return null;
+
+      return (
+        <div className="space-y-2">
+          {fieldData.map(({ label, value }) => (
+            <div key={label} className="flex justify-between">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="font-medium">{String(value)}</span>
             </div>
           ))}
         </div>
@@ -220,15 +252,14 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
 
     const entries =
       (meta.fields || [])
-        .map((f: any) => ({ label: f.label || labelize(f.name), value: formData[f.name] }))
+        .map((f: any) => ({ label: f.label || labelize(f.name), value: sectionsData[f.name] }))
         .filter(({ value }) => value != null && String(value).trim() !== "");
 
     const imageKey = `${section.id}_images`;
-    const imageUrls = Array.isArray(formData[imageKey]) ? formData[imageKey].filter(Boolean) : [];
+    const imageUrls = Array.isArray(sectionsData[imageKey]) ? sectionsData[imageKey].filter(Boolean) : [];
 
     const hasTables = meta?.tables && meta.tables.length > 0;
 
-    // If no content at all, return null
     if (entries.length === 0 && imageUrls.length === 0 && !hasTables) {
       return null;
     }
@@ -259,7 +290,6 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
           </div>
         )}
 
-        {/* --- TABLES: Render dynamic tables from metadata --- */}
         {hasTables && (
           <div className="space-y-4 mt-4">
             <h4 className="text-sm font-semibold text-gray-700">Data Tables</h4>
@@ -293,7 +323,6 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
     );
   };
 
-  // Check if section has content before rendering
   const hasContent = sectionHasContent(section, claim);
 
   return (
@@ -352,25 +381,38 @@ function getDynamicSectionsFromClaim(claim: Claim): ReportSection[] {
     },
   ];
 
-  const metas = (claim.form_data?.dynamic_sections_metadata as any[]) || [];
-  metas.forEach((meta, idx) => {
+  let currentOrder = 3;
+
+  // Add additional information sub-sections
+  const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
+  additionalInfoSections.forEach((infoSection) => {
+    const section: ReportSection = {
+      id: infoSection.id,
+      name: infoSection.name,
+      content: null,
+      isVisible: true,
+      order: currentOrder++,
+    };
+    section.isVisible = sectionHasContent(section, claim);
+    sections.push(section);
+  });
+
+  // Add dynamic sections
+  const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
+  metas.forEach((meta) => {
     const section: ReportSection = {
       id: meta.id,
-      name: meta.name || `Section ${idx + 1}`,
+      name: meta.name || `Section ${currentOrder}`,
       content: null,
-      isVisible: true, // temp value
-      order: 3 + idx,
+      isVisible: true,
+      order: currentOrder++,
     };
-    
-    // Set visibility based on whether section has content
     section.isVisible = sectionHasContent(section, claim);
-    
     sections.push(section);
   });
 
   return sections;
 }
-
 
 /* =========================
    buildReportJson
@@ -386,20 +428,20 @@ function buildReportJson(
     .sort((a, b) => a.order - b.order);
   const components: any[] = [];
 
-  console.log("claim in buildReportJson:", claim);
-
   components.push({
     type: "header",
     style: { wrapper: "px-0 py-2", title: "text-3xl font-extrabold tracking-wide text-black center" },
     props: { text: "SURVEY REPORT" },
   });
 
+  const metas = (claim.sections?.dynamic_sections_metadata as any[]) || [];
+  const sectionsData = claim.sections || {};
+  const additionalInfoSections = (claim.sections?.additional_info_sections as AdditionalInfoSection[]) || [];
+
   for (const s of visibleSections) {
     components.push({ type: "subheader", props: { text: s.name } });
 
-    const metas = (claim.form_data?.dynamic_sections_metadata as any[]) || [];
-    const formData = claim.form_data || {};
-
+    // --- Overview ---
     if (s.id === "overview") {
       components.push({
         type: "table",
@@ -418,48 +460,100 @@ function buildReportJson(
       continue;
     }
 
-    const meta = metas.find((m) => m.id === s.id);
-    const pairs: [string, any][] = [];
+    // --- Policy Details ---
+    if (s.id === "policy-details") {
+      const policyRows = [
+        ["Registration ID", claim.registration_id],
+        ["Insured Name", claim.insured_name],
+        ["Insurer", claim.insurer_name],
+        ["Assigned Surveyor", claim.surveyor_name],
+        ["Policy Number", claim.policy_number],
+        ["Sum Insured", claim.sum_insured],
+        ["Date of Loss", claim.loss_date ? format(new Date(claim.loss_date), "MMM dd, yyyy") : null],
+        ["Loss Description", claim.loss_description],
+      ].filter(([_, v]) => v != null && String(v).trim() !== "");
 
-    if (meta?.fields?.length) {
-      meta.fields.forEach((f: any) => {
-        const val = formData[f.name];
-        if (val != null && String(val).trim() !== "") {
-          pairs.push([f.label || labelize(f.name), val]);
-        }
-      });
-    }
-
-    if (pairs.length > 0) {
-      components.push({
-        type: "table",
-        props: {
-          headers: ["Field", "Value"],
-          rows: pairs,
-        },
-      });
-    }
-
-    const imageKey = `${s.id}_images`;
-    const urls = Array.isArray(formData[imageKey]) ? formData[imageKey].filter(Boolean) : [];
-    if (urls.length > 0) {
-      components.push({
-        type: "image-grid",
-        props: { title: "Images", rows: [urls.slice(0, 2), urls.slice(2, 4)] },
-      });
-    }
-
-    if (meta?.tables?.length) {
-      meta.tables.forEach((table: any) => {
+      if (policyRows.length > 0) {
         components.push({
           type: "table",
           props: {
-            title: table.name || "Table",
-            headers: [],
-            rows: table.data?.map((r: any) => r.map((c: any) => c?.value ?? "")) || [],
+            headers: ["Field", "Value"],
+            rows: policyRows,
           },
         });
-      });
+      }
+      continue;
+    }
+
+    // --- Additional Information Sub-sections ---
+    const additionalInfoSection = additionalInfoSections.find(infoSec => infoSec.id === s.id);
+    if (additionalInfoSection) {
+      const fields = additionalInfoSection.fields || [];
+      
+      const rows = fields
+        .map(field => {
+          const value = sectionsData[field.name];
+          return [field.label, value];
+        })
+        .filter(([_, v]) => v != null && String(v).trim() !== "");
+
+      if (rows.length > 0) {
+        components.push({
+          type: "table",
+          props: {
+            headers: ["Field", "Value"],
+            rows: rows,
+          },
+        });
+      }
+      continue;
+    }
+
+    // --- Dynamic Sections ---
+    const meta = metas.find((m) => m.id === s.id);
+    if (meta) {
+      const pairs: [string, any][] = [];
+
+      if (meta.fields?.length) {
+        meta.fields.forEach((f: any) => {
+          const val = sectionsData[f.name];
+          if (val != null && String(val).trim() !== "") {
+            pairs.push([f.label || labelize(f.name), val]);
+          }
+        });
+      }
+
+      if (pairs.length > 0) {
+        components.push({
+          type: "table",
+          props: {
+            headers: ["Field", "Value"],
+            rows: pairs,
+          },
+        });
+      }
+
+      const imageKey = `${s.id}_images`;
+      const urls = Array.isArray(sectionsData[imageKey]) ? sectionsData[imageKey].filter(Boolean) : [];
+      if (urls.length > 0) {
+        components.push({
+          type: "image-grid",
+          props: { title: "Images", rows: [urls.slice(0, 2), urls.slice(2, 4)] },
+        });
+      }
+
+      if (meta?.tables?.length) {
+        meta.tables.forEach((table: any) => {
+          components.push({
+            type: "table",
+            props: {
+              title: table.name || "Table",
+              headers: [],
+              rows: table.data?.map((r: any) => r.map((c: any) => c?.value ?? "")) || [],
+            },
+          });
+        });
+      }
     }
   }
 
@@ -525,7 +619,7 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
     }, {} as Record<string, ClaimDocument[]>) || {};
 
   const [sections, setSections] = useState<ReportSection[]>(() => getDynamicSectionsFromClaim(claim));
-  const [includeHeader, setIncludeHeader] = useState(true); // ADD THIS STATE
+  const [includeHeader, setIncludeHeader] = useState(true);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -551,7 +645,6 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
   const handlePreview = async () => {
     const payload = buildReportJson(claim, sections, groupedDocuments);
     
-    // UPDATE ASSETS BASED ON TOGGLE
     payload.assets = {
       firstPageBackground: includeHeader 
         ? "https://ik.imagekit.io/pritvik/Reports%20-%20generic%20bg.png?updatedAt=1763381793043" 
@@ -579,11 +672,10 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
   const handleDownload = async () => {
     const payload = buildReportJson(claim, sections, groupedDocuments);
     
-    // UPDATE ASSETS BASED ON TOGGLE
     payload.assets = {
       firstPageBackground: includeHeader 
-        ? "https://placeholder.com/first-page-with-header.png" 
-        : "https://placeholder.com/first-page-without-header.png",
+        ? "https://ik.imagekit.io/pritvik/Reports%20-%20generic%20bg.png?updatedAt=1763381793043" 
+        : "https://ik.imagekit.io/pritvik/Reports%20-%20generic%20footer%20only%20bg",
       otherPagesBackground: "https://ik.imagekit.io/pritvik/Reports%20-%20generic%20footer%20only%20bg",
     };
     
@@ -632,7 +724,6 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
             </SortableContext>
           </DndContext>
 
-          {/* ADD THIS SECTION FOR HEADER TOGGLE */}
           <div className="mt-6 pt-4 border-t">
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div>

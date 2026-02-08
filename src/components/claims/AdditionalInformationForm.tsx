@@ -25,7 +25,56 @@ import { EditableTable, TableModal } from './TableComponents';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-
+const ADDITIONAL_INFO_SECTIONS = [
+  {
+    id: "basic-information",
+    name: "Basic Information",
+    order: 1,
+    fields: [
+      { name: "cha_name", label: "CHA Name" },
+      { name: "consignee_name", label: "Consignee Name" },
+      { name: "consigner_name", label: "Consigner Name" },
+      { name: "underwriter_name", label: "Underwriter Name" },
+    ]
+  },
+  {
+    id: "invoice-details",
+    name: "Invoice Details",
+    order: 2,
+    fields: [
+      { name: "invoice_no", label: "Invoice No" },
+      { name: "invoice_date", label: "Invoice Date" },
+      { name: "invoice_value", label: "Invoice Value" },
+    ]
+  },
+  {
+    id: "goods-details",
+    name: "Goods Details",
+    order: 3,
+    fields: [
+      { name: "invoice_net_wt", label: "Invoice Net Weight" },
+      { name: "invoice_gross_wt", label: "Invoice Gross Weight" },
+      { name: "invoice_pkg_count", label: "Invoice Package Count" },
+    ]
+  },
+  {
+    id: "certificate-details",
+    name: "Certificate Details",
+    order: 4,
+    fields: [
+      { name: "certificate_no", label: "Certificate No" },
+      { name: "endorsement_no", label: "Endorsement No" },
+    ]
+  },
+  {
+    id: "survey-notes",
+    name: "Survey Notes",
+    order: 5,
+    fields: [
+      { name: "applicant_survey", label: "Applicant Survey" },
+    ]
+  }
+];
 
 interface AdditionalInformationFormProps {
   claim: Claim;
@@ -96,7 +145,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, cl
     const { error: uploadError } = await supabase
       .from(tableName)
       .update({
-        form_data: {
+        sections: {
           ...claimFormData,
           [`${sectionKey}_images`]: updated,
           custom_fields_metadata: customFields,
@@ -137,7 +186,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, cl
     const { error: removeError } = await supabase
       .from(tableName)
       .update({
-        form_data: {
+        sections: {
           ...claimFormData,
           [`${sectionKey}_images`]: updated,
           custom_fields_metadata: customFields,
@@ -202,7 +251,7 @@ export const AdditionalInformationForm = ({ claim }: AdditionalInformationFormPr
   const updateClaimMutation = useUpdateClaimSilent();
     const queryClient = useQueryClient();
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset, control } = useForm({
-    defaultValues: claim.form_data || {}
+    defaultValues: claim.sections || {}
     
   });
 
@@ -266,7 +315,7 @@ export const AdditionalInformationForm = ({ claim }: AdditionalInformationFormPr
   const { data: templates = [] } = useFormTemplates(claim.policy_type_id);
   
 
-  // Load custom fields from form_data on mount
+  // Load custom fields from sections on mount
   // Remove the old useEffect with watch and replace with this:
 useEffect(() => {
   if (!currentTemplate) {
@@ -276,12 +325,12 @@ useEffect(() => {
 
 // Load saved data including custom fields and hidden fields
 useEffect(() => {
-  if (!claim?.form_data) return;
+  if (!claim?.sections) return;
 
-  const savedCustomFields = (claim.form_data?.custom_fields_metadata || []) as FormField[];
-  const savedHiddenFieldsArray = Array.isArray(claim.form_data?.hidden_fields) ? (claim.form_data!.hidden_fields as string[]) : [];
+  const savedCustomFields = (claim.sections?.custom_fields_metadata || []) as FormField[];
+  const savedHiddenFieldsArray = Array.isArray(claim.sections?.hidden_fields) ? (claim.sections!.hidden_fields as string[]) : [];
   const savedHiddenFields = new Set<string>(savedHiddenFieldsArray);
-  const savedFieldLabels = (claim.form_data?.field_labels || {}) as Record<string, string>;
+  const savedFieldLabels = (claim.sections?.field_labels || {}) as Record<string, string>;
 
   // Filter out hidden fields when loading
   const visibleCustomFields = savedCustomFields.filter(field => !savedHiddenFields.has(field.name));
@@ -292,7 +341,7 @@ useEffect(() => {
 
   // Load section images
   const images: Record<string, string[]> = {};
-  Object.entries(claim.form_data).forEach(([key, value]) => {
+  Object.entries(claim.sections).forEach(([key, value]) => {
     if (key.endsWith('_images') && Array.isArray(value)) {
       images[key.replace('_images', '')] = value;
     }
@@ -300,7 +349,7 @@ useEffect(() => {
   setSectionImages(images);
 
   // Load form field values, skipping hidden fields
-  Object.entries(claim.form_data).forEach(([key, value]) => {
+  Object.entries(claim.sections).forEach(([key, value]) => {
     if (savedHiddenFields.has(key)) {
       return; // Skip hidden fields
     }
@@ -312,7 +361,7 @@ useEffect(() => {
       setValue(key, value);
     }
   });
-}, [claim?.form_data, setValue]);
+}, [claim?.sections, setValue]);
 
   // Autosave functionality
   const handleAutosave = useCallback(async (data: Record<string, unknown>) => {
@@ -321,23 +370,23 @@ useEffect(() => {
     );
 
     const existingCustomEntries = Object.fromEntries(
-      Object.entries(claim.form_data || {}).filter(([k]) => k.startsWith("custom_"))
+      Object.entries(claim.sections || {}).filter(([k]) => k.startsWith("custom_"))
     );
 
     await updateClaimMutation.mutateAsync({
       id: claim.id,
       updates: {
-        form_data: {
+        sections: {
           ...standardData,
           ...existingCustomEntries,
-          custom_fields_metadata: (claim.form_data?.custom_fields_metadata as unknown[]) || [],
-          hidden_fields: (claim.form_data?.hidden_fields as string[]) || [],
-          field_labels: (claim.form_data?.field_labels as Record<string, string>) || {},
+          custom_fields_metadata: (claim.sections?.custom_fields_metadata as unknown[]) || [],
+          hidden_fields: (claim.sections?.hidden_fields as string[]) || [],
+          field_labels: (claim.sections?.field_labels as Record<string, string>) || {},
         } as any,
         // intimation_date: ""
       },
     });
-  }, [claim.id, updateClaimMutation, claim.form_data]);
+  }, [claim.id, updateClaimMutation, claim.sections]);
 // IMPORTANT: Keep delay high and enabled: false to prevent saving while typing
   // Data saves automatically on blur (clicking outside field) and on tick button
   useAutosave({
@@ -359,9 +408,9 @@ const isInitialMount = useRef(true);
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      reset(claim.form_data || {});
+      reset(claim.sections || {});
     }
-  }, [reset]); // Don't depend on claim.form_data to prevent reset on every change
+  }, [reset]); // Don't depend on claim.sections to prevent reset on every change
 
   const onSubmit = async (data: Record<string, unknown>) => {
   console.log('🔥 onSubmit called with data:', data);
@@ -380,7 +429,7 @@ const isInitialMount = useRef(true);
         Object.entries(data).filter(([k]) => !k.startsWith("custom_"))
       );
       const existingCustomEntries = Object.fromEntries(
-        Object.entries(claim.form_data || {}).filter(([k]) => k.startsWith("custom_"))
+        Object.entries(claim.sections || {}).filter(([k]) => k.startsWith("custom_"))
       );
 
       const imagesData: Record<string, string[]> = {};
@@ -436,7 +485,7 @@ const isInitialMount = useRef(true);
 
       const { error } = await supabase
         .from(tableName)  // ← Use dynamic tableName
-        .update({ form_data: dataWithMetadata })
+        .update({ sections: dataWithMetadata })
         .eq('id', claim.id);
 
       if (error) {
@@ -472,7 +521,7 @@ const isInitialMount = useRef(true);
   const saveCustomField = async (fieldName: string) => {
     try {
       const fieldValue = watch(fieldName);
-      const existingData = claim.form_data || {};
+      const existingData = claim.sections || {};
       const dataWithMetadata = {
         ...existingData,
         [fieldName]: fieldValue,
@@ -490,7 +539,7 @@ const isInitialMount = useRef(true);
 
       const { error } = await supabase
         .from(tableName)
-        .update({ form_data: dataWithMetadata })
+        .update({ sections: dataWithMetadata })
         .eq('id', claim.id);
 
       if (error) {
@@ -517,12 +566,12 @@ const isInitialMount = useRef(true);
   };
   // const saveFieldLabel = async (fieldName: string) => {
   //   try {
-  //     const existingData = claim.form_data || {};
+  //     const existingData = claim.sections
   //     const updatedLabels = { ...(typeof existingData.field_labels === "object" && existingData.field_labels !== null ? existingData.field_labels : {}), ...fieldLabels };
   //     await updateClaimMutation.mutateAsync({
   //       id: claim.id,
   //       updates: {
-  //         form_data: {
+  //         sections: {
   //           ...existingData,
   //           field_labels: updatedLabels,
   //           custom_fields_metadata: customFields as unknown[],
@@ -545,7 +594,7 @@ const isInitialMount = useRef(true);
 
   const saveFieldLabel = async (fieldName: string) => {
   try {
-    const existingData = claim.form_data || {};
+    const existingData = claim.sections || {};
     const updatedLabels = { ...(typeof existingData.field_labels === "object" && existingData.field_labels !== null ? existingData.field_labels : {}), ...fieldLabels };
     
     // Update dynamic sections metadata with the new label
@@ -568,7 +617,7 @@ const isInitialMount = useRef(true);
     const { error } = await supabase
       .from(tableName)
       .update({
-        form_data: {
+        sections: {
           ...existingData,
           field_labels: updatedLabels,
           custom_fields_metadata: customFields as unknown[],
@@ -617,7 +666,7 @@ const isInitialMount = useRef(true);
 
     const { error } = await supabase
       .from(tableName)
-      .update({ form_data: dataWithMetadata })
+      .update({ sections: dataWithMetadata })
       .eq('id', claim.id);
     
     if (error) {
@@ -901,8 +950,8 @@ const isInitialMount = useRef(true);
     await updateClaimMutation.mutateAsync({
       id: claim.id,
       updates: {
-        form_data: {
-          ...claim.form_data,
+        sections: {
+          ...claim.sections,
           dynamic_sections_metadata: updatedSections,
         } as any,
       },
@@ -938,8 +987,8 @@ const isInitialMount = useRef(true);
     await updateClaimMutation.mutateAsync({
       id: claim.id,
       updates: {
-        form_data: {
-          ...claim.form_data,
+        sections: {
+          ...claim.sections,
           dynamic_sections_metadata: updatedSections,
         } as any,
       },
@@ -1109,7 +1158,7 @@ const loadTemplate = (template: FormTemplate) => {
 
   
   // Preserve existing form data
-  Object.entries(claim.form_data || {}).forEach(([key, value]) => {
+  Object.entries(claim.sections || {}).forEach(([key, value]) => {
     if (!key.endsWith('_metadata') && 
         !key.endsWith('_images') && 
         !key.includes('hidden_fields') && 
@@ -1134,7 +1183,7 @@ const loadTemplate = (template: FormTemplate) => {
     }
     
     // Check if we have saved sections in the claim data
-    const savedDynamicSections = claim.form_data?.dynamic_sections_metadata as DynamicSection[] | undefined;
+    const savedDynamicSections = claim.sections?.dynamic_sections_metadata as DynamicSection[] | undefined;
     console.log('🔄 Initializing dynamic sections from claim data:', savedDynamicSections);
     
     if (savedDynamicSections && savedDynamicSections.length > 0) {
@@ -1143,8 +1192,8 @@ const loadTemplate = (template: FormTemplate) => {
       setDynamicSections(savedDynamicSections);
       
       // Restore template state from saved data
-      const savedTemplateName = claim.form_data?.current_template_name as string | undefined;
-      const savedIsModified = claim.form_data?.is_template_modified as boolean | undefined;
+      const savedTemplateName = claim.sections?.current_template_name as string | undefined;
+      const savedIsModified = claim.sections?.is_template_modified as boolean | undefined;
       
       if (savedTemplateName) {
         const template = templates.find(t => t.name === savedTemplateName);
@@ -1370,7 +1419,7 @@ const loadTemplate = (template: FormTemplate) => {
                   {...register(field.name, { 
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || '')) {
+                      if (e.target.value !== (claim.sections?.[field.name] || '')) {
                         setPendingSaves(prev => new Set([...prev, field.name]));
                       }
                     },
@@ -1472,7 +1521,7 @@ const loadTemplate = (template: FormTemplate) => {
                     valueAsNumber: true,
                     onChange: (e) => {
                       const newValue = e.target.valueAsNumber || e.target.value;
-                      if (newValue !== (claim.form_data?.[field.name] || '')) {
+                      if (newValue !== (claim.sections?.[field.name] || '')) {
                         setPendingSaves(prev => new Set([...prev, field.name]));
                       }
                     },
@@ -1571,7 +1620,7 @@ const loadTemplate = (template: FormTemplate) => {
                   {...register(field.name, { 
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || '')) {
+                      if (e.target.value !== (claim.sections?.[field.name] || '')) {
                         setPendingSaves(prev => new Set([...prev, field.name]));
                       }
                     },
@@ -1671,7 +1720,7 @@ const loadTemplate = (template: FormTemplate) => {
                   {...register(field.name, { 
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {
-                      if (e.target.value !== (claim.form_data?.[field.name] || '')) {
+                      if (e.target.value !== (claim.sections?.[field.name] || '')) {
                         setPendingSaves(prev => new Set([...prev, field.name]));
                       }
                     },
@@ -1798,7 +1847,7 @@ const loadTemplate = (template: FormTemplate) => {
                   value={typeof fieldValue === "string" ? fieldValue : ""}
                   onValueChange={(value) => {
                     setValue(field.name, value);
-                    if (value !== (claim.form_data?.[field.name] || '')) {
+                    if (value !== (claim.sections?.[field.name] || '')) {
                       setPendingSaves(prev => new Set([...prev, field.name]));
                     }
                   }}
@@ -1882,7 +1931,7 @@ const loadTemplate = (template: FormTemplate) => {
                   checked={typeof fieldValue === "boolean" ? fieldValue : false}
                   onCheckedChange={(checked) => {
                     setValue(field.name, checked);
-                    if (checked !== (claim.form_data?.[field.name] || false)) {
+                    if (checked !== (claim.sections?.[field.name] || false)) {
                       setPendingSaves(prev => new Set([...prev, field.name]));
                       setTimeout(() => {
                         if (pendingSaves.has(field.name)) {
@@ -2026,8 +2075,8 @@ style={{ backgroundColor: '#6B7FB8' }}
                               await updateClaimMutation.mutateAsync({
                                 id: claim.id,
                                 updates: {
-                                  form_data: {
-                                    ...claim.form_data,
+                                  sections: {
+                                    ...claim.sections,
                                     dynamic_sections_metadata: updatedSections,
                                   } as any,
                                 },
@@ -2056,8 +2105,8 @@ style={{ backgroundColor: '#6B7FB8' }}
                             await updateClaimMutation.mutateAsync({
                               id: claim.id,
                               updates: {
-                                form_data: {
-                                  ...claim.form_data,
+                                sections: {
+                                  ...claim.sections,
                                   dynamic_sections_metadata: updatedSections,
                                 } as any,
                               },
@@ -2110,7 +2159,7 @@ style={{ backgroundColor: '#6B7FB8' }}
                 }
                 claimId={claim.id}
                 claim={claim}
-                claimFormData={claim.form_data || {}}
+                claimFormData={claim.sections || {}}
                 updateClaim={updateClaimMutation}
                 customFields={customFields}
                 hiddenFields={hiddenFields}
@@ -2687,7 +2736,7 @@ const SearchableSelectField: React.FC<SearchableSelectFieldProps> = ({
           searchPlaceholder={`Search or add ${field.label.toLowerCase()}...`}
           onValueChange={(value) => {
             setValue(field.name, value);
-            if (value !== (claim.form_data?.[field.name] || '')) {
+            if (value !== (claim.sections?.[field.name] || '')) {
               setPendingSaves(prev => new Set([...prev, field.name]));
             }
           }}

@@ -116,7 +116,7 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
         title: data.title,
         claim_amount: data.claim_amount,
         intimation_date: data.intimation_date,
-        form_data: {
+        sections: {
           registration_id: data.registration_id,
           insured_name: data.insured_name,
           assigned_surveyor: data.assigned_surveyor,

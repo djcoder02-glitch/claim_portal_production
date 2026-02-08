@@ -105,7 +105,7 @@ To add entirely new sections:
 
 ## Database Considerations
 
-- All field data is stored in the `claims.form_data` JSONB column
+- All field data is stored in the `claims.sections` JSONB column
 - No database schema changes are needed for new fields
 - Field names should use snake_case for consistency
 - Data is automatically saved when the form is submitted

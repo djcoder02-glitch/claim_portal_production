@@ -14,7 +14,7 @@ export interface VASReport {
   status: string;
   report_amount: number | null;
   intimation_date: string | null;
-  form_data: Record<string, unknown>;
+  sections: Record<string, unknown>;
   surveyor_name: string | null;
   surveyor_id: string | null;
   created_at: string;
@@ -83,7 +83,7 @@ export const useCreateVASReport = () => {
       title: string;
       report_amount?: number;
       intimation_date?: string;
-      form_data?: Record<string, unknown>;
+      sections?: Record<string, unknown>;
     }) => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
@@ -97,8 +97,8 @@ export const useCreateVASReport = () => {
           title: reportData.title,
           user_id: user.id,
           intimation_date: reportData.intimation_date || null,
-          form_data: (reportData.form_data && Object.keys(reportData.form_data).length > 0 
-            ? reportData.form_data 
+          sections: (reportData.sections && Object.keys(reportData.sections).length > 0 
+            ? reportData.sections 
             : null) as any,
           report_amount: reportData.report_amount || null,
           status: 'pending'
@@ -133,10 +133,10 @@ export const useUpdateVASReport = () => {
       // Clean the updates before sending
       const cleanedUpdates : any= { ...updates };
       
-      // Convert empty form_data to null
-      if (cleanedUpdates.form_data !== undefined) {
-        if (!cleanedUpdates.form_data || Object.keys(cleanedUpdates.form_data).length === 0) {
-          cleanedUpdates.form_data = null;
+      // Convert empty sections to null
+      if (cleanedUpdates.sections !== undefined) {
+        if (!cleanedUpdates.sections || Object.keys(cleanedUpdates.sections).length === 0) {
+          cleanedUpdates.sections = null;
         }
       }
       const { data, error } = await supabase

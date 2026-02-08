@@ -94,7 +94,7 @@ export const useCreateClaim = () => {
       title: string;
       claim_amount?: number;
       intimation_date?: string;
-      form_data?: {
+      sections?: {
         registration_id?: string;
         insured_name?: string;
         assigned_surveyor?: string;
@@ -121,8 +121,8 @@ export const useCreateClaim = () => {
       // Generate claim number
       const claimNumber = `CLM-${Date.now()}`;
 
-      // Extract form_data fields
-      const formData = claimData.form_data || {};
+      // Extract sections fields
+      const formData = claimData.sections || {};
 
       console.log('Creating claim with data:', {
         claim_number: claimNumber,
@@ -152,9 +152,9 @@ export const useCreateClaim = () => {
           surveyor_name: formData.assigned_surveyor || null,
           insurer_name: formData.insurer || null,
           
-          // Keep form_data as backup
+          // Keep sections as backup
           sections: {
-            form_data: formData
+            sections: formData
           },
         })
         .select()

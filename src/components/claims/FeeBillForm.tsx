@@ -76,19 +76,19 @@ const POLICY_INFO_FIELDS = [
     key: 'insured_name',
     label: 'THE INSURED',
     type: 'readonly' as const,
-    source: 'form_data.insured_name'
+    source: 'sections.insured_name'
   },
   { 
     key: 'insurer_name',
     label: 'THE INSURERS',
     type: 'readonly' as const,
-    source: 'form_data.insurer'
+    source: 'sections.insurer'
   },
   { 
     key: 'policy_number',
     label: 'INSURANCE POLICY NUMBER',
     type: 'readonly' as const,
-    source: 'form_data.policy_number'
+    source: 'sections.policy_number'
   },
   { 
     key: 'policy_type',
@@ -100,13 +100,13 @@ const POLICY_INFO_FIELDS = [
     key: 'insured_property',
     label: 'INSURED PROPERTY',
     type: 'readonly' as const,
-    source: 'form_data.insured_property'
+    source: 'sections.insured_property'
   },
   { 
     key: 'survey_type',
     label: 'TYPE OF SURVEY',
     type: 'readonly' as const,
-    source: 'form_data.survey_type',
+    source: 'sections.survey_type',
     defaultValue: 'Commercial Vehicle Final Survey'
   },
 ];
@@ -233,7 +233,7 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
   const buildDefaultValues = () => {
     const defaults: any = {
       invoice_number: claim.claim_number || "",
-      invoice_date: claim.form_data?.invoice_date || format(new Date(), 'yyyy-MM-dd'),
+      invoice_date: claim.sections?.invoice_date || format(new Date(), 'yyyy-MM-dd'),
       bank_name: FIXED_TEXT.bankName,
       account_number: FIXED_TEXT.accountNumber,
       ifsc_code: FIXED_TEXT.ifscCode,
@@ -251,31 +251,31 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
 
     // Add editable policy fields
     EDITABLE_POLICY_FIELDS.forEach(field => {
-      defaults[field.key] = claim.form_data?.[field.key] || field.defaultValue || 0;
+      defaults[field.key] = claim.sections?.[field.key] || field.defaultValue || 0;
     });
 
     // Add fee breakdown fields
     FEE_BREAKDOWN_FIELDS.forEach(section => {
       section.rows.forEach(row => {
-        defaults[row.key] = claim.form_data?.[row.key] || row.defaultValue || 0;
+        defaults[row.key] = claim.sections?.[row.key] || row.defaultValue || 0;
         
         // Add additional inputs
         if (row.additionalInput) {
           defaults[row.additionalInput.key] = 
-            claim.form_data?.[row.additionalInput.key] || row.additionalInput.defaultValue;
+            claim.sections?.[row.additionalInput.key] || row.additionalInput.defaultValue;
         }
         if (row.additionalInputs) {
           row.additionalInputs.forEach(input => {
-            defaults[input.key] = claim.form_data?.[input.key] || input.defaultValue;
+            defaults[input.key] = claim.sections?.[input.key] || input.defaultValue;
           });
         }
       });
     });
 
     // Add totals
-    defaults.total_above = claim.form_data?.total_above || 0;
-    defaults.gst_amount = claim.form_data?.gst_amount || 0;
-    defaults.total_amount = claim.form_data?.total_amount || 0;
+    defaults.total_above = claim.sections?.total_above || 0;
+    defaults.gst_amount = claim.sections?.gst_amount || 0;
+    defaults.total_amount = claim.sections?.total_amount || 0;
 
     return defaults;
   };
@@ -351,8 +351,8 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
       await updateClaimMutation.mutateAsync({
         id: claim.id,
         updates: {
-          form_data: {
-            ...claim.form_data,
+          sections: {
+            ...claim.sections,
             ...data
           }
         }

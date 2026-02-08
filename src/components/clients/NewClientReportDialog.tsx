@@ -93,7 +93,7 @@ export const NewClientReportDialog = ({ open, onOpenChange }: NewClientReportDia
         title: data.title,
         report_amount: data.report_amount,
         intimation_date: data.intimation_date,
-        form_data: {},
+        sections: {},
       });
 
       queryClient.invalidateQueries({ queryKey: ["client-reports"] });
