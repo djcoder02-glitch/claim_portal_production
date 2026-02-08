@@ -136,9 +136,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, cl
     console.log(sectionKey, " ke images updated:", updated);
 
     // CRITICAL: Detect table type using service_id/company_id
-    const isVASReport = 'service_id' in claim;
-    const isClientReport = 'company_id' in claim && !('service_id' in claim);
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
+    const tableName =(claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
 
     console.log('💾 Saving image to table:', tableName);
 
@@ -177,10 +179,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, cl
     setImages(updated);
 
     // CRITICAL: Detect table type using service_id/company_id
-    const isVASReport = 'service_id' in claim;
-    const isClientReport = 'company_id' in claim && !('service_id' in claim);
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-
+const tableName = (claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type=== 'client' 
+    ? 'client_reports' 
+    : 'claims';
+ 
     console.log('💾 Removing image from table:', tableName);
 
     const { error: removeError } = await supabase
@@ -250,6 +254,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, cl
 export const AdditionalInformationForm = ({ claim }: AdditionalInformationFormProps) => {
   const updateClaimMutation = useUpdateClaimSilent();
     const queryClient = useQueryClient();
+    const customFieldsRef = useRef<FormField[]>([]);
+const hiddenFieldsRef = useRef<Set<string>>(new Set());
+const fieldLabelsRef = useRef<Record<string, string>>({});
+    
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset, control } = useForm({
     defaultValues: claim.sections || {}
     
@@ -322,6 +330,12 @@ useEffect(() => {
     setIsTemplateModified(false);
   }
 }, [currentTemplate]);
+// Update refs whenever state changes
+useEffect(() => {
+  customFieldsRef.current = customFields;
+  hiddenFieldsRef.current = hiddenFields;
+  fieldLabelsRef.current = fieldLabels;
+}, [customFields, hiddenFields, fieldLabels]);
 
 // Load saved data including custom fields and hidden fields
 useEffect(() => {
@@ -363,32 +377,40 @@ useEffect(() => {
   });
 }, [claim?.sections, setValue]);
 
-  // Autosave functionality
+  //autosave handler
   const handleAutosave = useCallback(async (data: Record<string, unknown>) => {
-    const standardData = Object.fromEntries(
-      Object.entries(data).filter(([k]) => !k.startsWith("custom_"))
-    );
+  const standardData = Object.fromEntries(
+    Object.entries(data).filter(([k]) => !k.startsWith("custom_"))
+  );
 
-    const existingCustomEntries = Object.fromEntries(
-      Object.entries(claim.sections || {}).filter(([k]) => k.startsWith("custom_"))
-    );
+  const tableName = (claim as any).claim_type === 'vas' 
+    ? 'vas_reports' 
+    : (claim as any).claim_type === 'client' 
+      ? 'client_reports' 
+      : 'claims';
 
-    await updateClaimMutation.mutateAsync({
-      id: claim.id,
-      updates: {
-        sections: {
-          ...standardData,
-          ...existingCustomEntries,
-          custom_fields_metadata: (claim.sections?.custom_fields_metadata as unknown[]) || [],
-          hidden_fields: (claim.sections?.hidden_fields as string[]) || [],
-          field_labels: (claim.sections?.field_labels as Record<string, string>) || {},
-        } as any,
-        // intimation_date: ""
-      },
-    });
-  }, [claim.id, updateClaimMutation, claim.sections]);
-// IMPORTANT: Keep delay high and enabled: false to prevent saving while typing
-  // Data saves automatically on blur (clicking outside field) and on tick button
+  console.log('💾 Autosave to table:', tableName, 'claim_type:', claim.claim_type);
+
+  const { error } = await supabase
+    .from(tableName)
+    .update({
+      sections: {
+        ...standardData,
+        custom_fields_metadata: customFieldsRef.current,
+        hidden_fields: Array.from(hiddenFieldsRef.current),
+        field_labels: fieldLabelsRef.current,
+      } as any
+    })
+    .eq('id', claim.id);
+
+  if (error) {
+    console.error('❌ Autosave error:', error);
+    throw error;
+  }
+
+  console.log('✅ Autosave completed');
+}, [claim.id, claim.claim_type]);
+
   useAutosave({
     control,
     onSave: handleAutosave,
@@ -477,11 +499,13 @@ const isInitialMount = useRef(true);
       console.log('📦 dynamic_sections_metadata:', dataWithMetadata.dynamic_sections_metadata);
 
       // CRITICAL: Detect table type using service_id/company_id
-      const isVASReport = !!(claim as any).service_id;
-      const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-      const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
+      const tableName = (claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
       
-      console.log('💾 Saving to table:', tableName, { isVASReport, isClientReport });
+      console.log('💾 Saving to table:', tableName);
 
       const { error } = await supabase
         .from(tableName)  // ← Use dynamic tableName
@@ -531,9 +555,11 @@ const isInitialMount = useRef(true);
       };
       
       // CRITICAL: Detect table type using service_id/company_id
-      const isVASReport = !!(claim as any).service_id;
-      const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-      const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
+      const tableName = (claim as any).claim_type=== 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
 
       console.log('💾 Saving custom field to table:', tableName);
 
@@ -608,10 +634,11 @@ const isInitialMount = useRef(true);
     }));
     
     // CRITICAL: Detect table type using service_id/company_id
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
-
+    const tableName = (claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
     console.log('💾 Saving label to table:', tableName);
 
     const { error } = await supabase
@@ -658,9 +685,11 @@ const isInitialMount = useRef(true);
     };
     
     // CRITICAL: Detect table type using service_id/company_id
-    const isVASReport = !!(claim as any).service_id;
-    const isClientReport = !!(claim as any).company_id && !(claim as any).service_id;
-    const tableName = isVASReport ? 'vas_reports' : isClientReport ? 'client_reports' : 'claims';
+    const tableName =(claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  : (claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
 
     console.log('💾 Removing field from table:', tableName);
 
@@ -739,6 +768,46 @@ const isInitialMount = useRef(true);
     // Mark for save
     setPendingSaves(prev => new Set([...prev, newName]));
     setIsTemplateModified(true);
+    // Immediately save the renamed field
+    setTimeout(async () => {
+      try {
+        const fieldValue = watch(newName);
+        const existingData = claim.sections || {};
+        const dataWithMetadata = {
+          ...existingData,
+          [newName]: fieldValue,
+          custom_fields_metadata: customFields.map(f => 
+            f.name === oldName ? { ...f, name: newName } : f
+          ),
+          hidden_fields: Array.from(hiddenFields),
+          field_labels: fieldLabels,
+        };
+        
+        const tableName = (claim as any).claim_type === 'vas' 
+  ? 'vas_reports' 
+  :(claim as any).claim_type === 'client' 
+    ? 'client_reports' 
+    : 'claims';
+
+        const { error } = await supabase
+          .from(tableName)
+          .update({ sections: dataWithMetadata })
+          .eq('id', claim.id);
+
+        if (error) throw error;
+        
+        setPendingSaves(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(newName);
+          return newSet;
+        });
+        
+        toast.success("Field renamed successfully!", { duration: 2000 });
+      } catch (error) {
+        console.error('Failed to save renamed field:', error);
+        toast.error("Failed to save field rename", { duration: 2000 });
+      }
+    }, 100);
   } else if (updates.label) {
     // If only label is being changed, update it in dynamic sections too
     setCustomFields(prev => prev.map(field => 

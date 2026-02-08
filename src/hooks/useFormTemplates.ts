@@ -59,18 +59,68 @@ export const useFormTemplates = (policyTypeId?: string) => {
     queryKey: ["form-templates", policyTypeId],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase.rpc('get_form_templates', {
-          policy_type_filter: policyTypeId || null
-        });
+        // Step 1: Get templates
+        let templatesQuery = supabase
+          .from('form_templates')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-        if (error) {
-          console.error('Template fetch error:', error);
-          return [];
+        if (policyTypeId) {
+          templatesQuery = templatesQuery.eq('policy_type_id', policyTypeId);
         }
-        
-        // Parse the JSON if it's a string, otherwise use as-is
-        const templates = typeof data === 'string' ? JSON.parse(data) : data;
-        return (Array.isArray(templates) ? templates : []) as FormTemplate[];
+
+        const { data: templates, error: templatesError } = await templatesQuery;
+        if (templatesError) throw templatesError;
+        if (!templates || templates.length === 0) return [];
+
+        // Step 2: Get sections for these templates
+        const templateIds = templates.map(t => t.id);
+        const { data: sections, error: sectionsError } = await supabase
+          .from('template_sections')
+          .select('*')
+          .in('template_id', templateIds)
+          .order('order_index');
+
+        if (sectionsError) throw sectionsError;
+
+        // Step 3: Get fields for these sections
+        const sectionIds = sections?.map(s => s.id) || [];
+        const { data: fields, error: fieldsError } = sectionIds.length > 0
+          ? await supabase
+              .from('template_fields')
+              .select('*')
+              .in('section_id', sectionIds)
+              .order('order_index')
+          : { data: [], error: null };
+
+        if (fieldsError) throw fieldsError;
+
+       // Step 4: Combine data with correct column mappings
+        const result = templates.map(template => ({
+          ...template,
+          sections: sections
+            ?.filter(s => s.template_id === template.id)
+            .map(section => ({
+              id: section.id,
+              name: section.name,
+              order_index: section.order_index || 0,
+              color_class: (section as any).color_class || 'bg-blue-50',
+              tables: (section as any).tables_data || [],
+              fields: fields
+                ?.filter(f => f.section_id === section.id)
+                .map(field => ({
+                  id: field.id,
+                  name: (field as any).field_name || field.name,
+                  label: (field as any).field_label || (field as any).label || '',
+                  type: (field as any).field_type || (field as any).type || 'text',
+                  required: (field as any).is_required ?? false,
+                  options: field.options ? (Array.isArray(field.options) ? field.options : []) : undefined,
+                  order_index: field.order_index || 0
+                })) || []
+            })) || []
+        }));
+
+        return result as FormTemplate[];
       } catch (err) {
         console.error('Failed to fetch templates:', err);
         return [];

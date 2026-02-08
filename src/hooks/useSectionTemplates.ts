@@ -20,6 +20,7 @@ export interface SectionTemplate {
   is_default: boolean;
   created_at: string;
 }
+
 export const useSectionTemplates = (policyTypeId?: string) => {
   return useQuery<SectionTemplate[]>({
     queryKey: ["section-templates", policyTypeId],
