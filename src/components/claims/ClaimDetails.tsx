@@ -289,7 +289,11 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
         id: claim!.id,
         updates: { status: newStatus }
       });
-      toast.success(`Claim status updated to ${newStatus}`);
+      
+      // Invalidate and refetch the claim data
+      queryClient.invalidateQueries({ queryKey: ["claim", id] });
+      
+      toast.success(`Claim status updated to ${newStatus.replace('_', ' ')}`);
     } catch (error) {
       toast.error("Failed to update claim status");
     }
@@ -488,15 +492,18 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
                     <h1 className="text-2xl font-bold text-slate-800">
                       {claim.title}
                     </h1>
+                    {/* Display Badge separately */}
+                    <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
+                      <StatusIcon className="w-3 h-3" />
+                      {currentStatus?.label}
+                    </Badge>
+                    {/* Dropdown for changing status */}
                     <Select
                       value={claim.status}
                       onValueChange={(newStatus: ClaimStatus) => handleStatusUpdate(newStatus)}
                     >
-                      <SelectTrigger className="w-48">
-                        <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {currentStatus?.label}
-                        </Badge>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Change status" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pending</SelectItem>
@@ -510,8 +517,8 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
                   </div>
                   <p className="text-muted-foreground flex items-center gap-2 mt-1">
                     <span className="font-medium">Claim #{claim.claim_number}</span>
-                    <span>•</span>
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs">{claim.policy_types?.name}</span>
+                    {/* <span>•</span>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs">{claim.policy_types?.name}</span> */}
                   </p>
                 </div>
               </div>

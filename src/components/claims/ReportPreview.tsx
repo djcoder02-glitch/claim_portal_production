@@ -382,24 +382,48 @@ function getDynamicSectionsFromClaim(claim: Claim): ReportSection[] {
   additionalInfoSections
     .sort((a, b) => a.order - b.order)
     .forEach((section, index) => {
-      sections.push({
+      // Create a temporary section to check if it has content
+      const tempSection: ReportSection = {
         id: section.id,
         name: section.name,
         content: null,
         isVisible: true,
+        order: 3 + index,
+      };
+      
+      // Check if this section has content
+      const hasContent = sectionHasContent(tempSection, claim);
+      
+      sections.push({
+        id: section.id,
+        name: section.name,
+        content: null,
+        isVisible: hasContent, // Only visible if it has content
         order: 3 + index,
       });
     });
 
   // Add dynamic sections
   metas
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => a.order_index - b.order_index)
     .forEach((meta, index) => {
-      sections.push({
+      // Create a temporary section to check if it has content
+      const tempSection: ReportSection = {
         id: meta.id,
         name: meta.name,
         content: null,
         isVisible: true,
+        order: 3 + additionalInfoSections.length + index,
+      };
+      
+      // Check if this section has content
+      const hasContent = sectionHasContent(tempSection, claim);
+      
+      sections.push({
+        id: meta.id,
+        name: meta.name,
+        content: null,
+        isVisible: hasContent, // Only visible if it has content
         order: 3 + additionalInfoSections.length + index,
       });
     });
@@ -531,7 +555,14 @@ function buildReportJson(
       if (urls.length > 0) {
         components.push({
           type: "image-grid",
-          props: { title: "Images", rows: [urls.slice(0, 2), urls.slice(2, 4)] },
+          props: { 
+            title: "Images", 
+            rows: [
+              urls.slice(0, 2),  // First row: 2 images
+              urls.slice(2, 4),  // Second row: 2 images
+              urls.slice(4, 6)   // Third row: 2 images
+            ].filter(row => row.length > 0)  // Remove empty rows
+          },
         });
       }
 

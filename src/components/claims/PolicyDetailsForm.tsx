@@ -21,6 +21,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface PolicyDetailsFormProps {
   claim: Claim;
@@ -34,7 +35,13 @@ interface FormField {
   options?: string[];
 }
 
+
+
 export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
+
+  // const updateClaimSilent = useUpdateClaimSilent();
+  const queryClient = useQueryClient();
+  
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset, control } = useForm({
     defaultValues: {
       registration_id: claim.registration_id || '',
@@ -102,6 +109,8 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
     const formData = {
       registration_id: claim.registration_id || '',
       insured_name: claim.insured_name || '',
+      insurer: claim.insurer_name || '',
+      assigned_surveyor: claim.surveyor_name || '',
       policy_number: claim.policy_number || '',
       sum_insured: claim.sum_insured || '',
       loss_description: claim.loss_description || '',
@@ -158,6 +167,20 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
         updateData[directMappings[fieldName]] = fieldValue === undefined || fieldValue === '' ? null : fieldValue;
       }
 
+      // Handle surveyor field - need to find surveyor ID and update both columns
+      if (fieldName === 'assigned_surveyor') {
+        const surveyor = surveyors.find(s => s.name === fieldValue);
+        updateData.surveyor_id = surveyor?.id || null;
+        updateData.surveyor_name = fieldValue || null;
+      }
+
+      // Handle insurer field - need to find insurer ID and update both columns
+      if (fieldName === 'insurer') {
+        const insurer = insurers.find(i => i.name === fieldValue);
+        updateData.insurer_id = insurer?.id || null;
+        updateData.insurer_name = fieldValue || null;
+      }
+
       // Use direct Supabase update
       const { error } = await supabase
         .from('claims')
@@ -175,6 +198,9 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
           newSet.delete(fieldName);
           return newSet;
         });
+
+        // Invalidate the claim query to refresh the UI
+        queryClient.invalidateQueries({ queryKey: ["claim", claim.id] });
 
         toast.success("Policy detail saved", { duration: 1800 }); 
         console.log('✅ Field saved successfully');
@@ -498,9 +524,17 @@ export const PolicyDetailsForm = ({ claim }: PolicyDetailsFormProps) => {
     console.log('🔥 onSubmit CALLED with data:', data);
     
     try {
+      // Find surveyor and insurer IDs
+      const surveyor = surveyors.find(s => s.name === data.assigned_surveyor);
+      const insurer = insurers.find(i => i.name === data.insurer);
+
       const updateData: any = {
         registration_id: data.registration_id || null,
         insured_name: data.insured_name || null,
+        surveyor_id: surveyor?.id || null,
+        surveyor_name: data.assigned_surveyor || null,
+        insurer_id: insurer?.id || null,
+        insurer_name: data.insurer || null,
         policy_number: data.policy_number || null,
         sum_insured: data.sum_insured ? parseFloat(data.sum_insured) : null,
         loss_date: data.date_of_loss || null,

@@ -95,158 +95,242 @@ interface ImageGridProps {
   images: string[];
   setImages: (urls: string[]) => void;
   claimId: string;
-  claim: Claim;  // ← ADD THIS
+  claim: Claim;
   claimFormData: Record<string, unknown>;
   updateClaim: ReturnType<typeof useUpdateClaimSilent>;
   customFields: FormField[];
   hiddenFields: Set<string>;
   fieldLabels: Record<string, string>;
   sectionImages: Record<string, string[]>;
+  queryClient: ReturnType<typeof useQueryClient>;
+  customFieldsRef: React.MutableRefObject<FormField[]>;
+  hiddenFieldsRef: React.MutableRefObject<Set<string>>;
+  fieldLabelsRef: React.MutableRefObject<Record<string, string>>;
 }
-
 // Add color options for sections
 const colorOptions = [
   { value: 'bg-gradient-primary', label: 'Blue', class: 'bg-gradient-primary' },
 ];
 
-const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, claimId, claim, claimFormData, updateClaim, customFields, hiddenFields, fieldLabels, sectionImages }) => {
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-  if (!e.target.files?.length) return;
+const ImageGrid: React.FC<ImageGridProps> = ({ sectionKey, images, setImages, claimId, claim, claimFormData, updateClaim, customFields, hiddenFields, fieldLabels, sectionImages, queryClient, customFieldsRef, hiddenFieldsRef, fieldLabelsRef }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const file = e.target.files[0];
-  const formData = new FormData();
-  formData.append("file", file);
+  const handleMultipleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
 
-  const toastId = toast.loading("Uploading image...");
+    const files = Array.from(e.target.files);
+    const availableSlots = 6 - images.filter(Boolean).length;
+    
+    if (files.length > availableSlots) {
+      toast.error(`Can only upload ${availableSlots} more image(s). Maximum 6 images allowed.`);
+      return;
+    }
 
-  try {
-    console.log("Uploading image to backend...");
-    const res = await fetch("https://mlkkk63swrqairyiahlk357sui0argkn.lambda-url.ap-south-1.on.aws/upload-image", {
-      method: "POST",
-      body: formData,
-    });
-    console.log("Upload response:", res);
+    const toastId = toast.loading(`Uploading ${files.length} image(s)...`);
 
-    if (!res.ok) throw new Error("Upload failed");
-    const data = await res.json();
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData();
+        formData.append("file", file);
 
-    const updated = [...images];
-    updated[index] = data.url;
-    setImages(updated);
-    console.log(sectionKey, " ke images updated:", updated);
+        const res = await fetch("https://mlkkk63swrqairyiahlk357sui0argkn.lambda-url.ap-south-1.on.aws/upload-image", {
+          method: "POST",
+          body: formData,
+        });
 
-    // CRITICAL: Detect table type using service_id/company_id
-    const tableName =(claim as any).claim_type === 'vas' 
-  ? 'vas_reports' 
-  : (claim as any).claim_type === 'client' 
-    ? 'client_reports' 
-    : 'claims';
+        if (!res.ok) throw new Error("Upload failed");
+        const data = await res.json();
+        return data.url;
+      });
 
-    console.log('💾 Saving image to table:', tableName);
-
-    const { error: uploadError } = await supabase
-      .from(tableName)
-      .update({
-        sections: {
-          ...claimFormData,
-          [`${sectionKey}_images`]: updated,
-          custom_fields_metadata: customFields,
-          hidden_fields: Array.from(hiddenFields),
-          field_labels: fieldLabels,
+      const uploadedUrls = await Promise.all(uploadPromises);
+      
+      // Find empty slots and fill them
+      const updated = [...images];
+      let urlIndex = 0;
+      for (let i = 0; i < 6 && urlIndex < uploadedUrls.length; i++) {
+        if (!updated[i]) {
+          updated[i] = uploadedUrls[urlIndex];
+          urlIndex++;
         }
-      })
-      .eq('id', claimId);
+      }
+      
+      setImages(updated);
 
-    if (uploadError) throw uploadError;
+      // Save to database
+      const tableName = (claim as any).claim_type === 'vas' 
+        ? 'vas_reports' 
+        : (claim as any).claim_type === 'client' 
+          ? 'client_reports' 
+          : 'claims';
 
-    console.log(sectionImages);
-    console.log("Images", images)
-    console.log("claim", claimFormData);
+      const { error: uploadError } = await supabase
+        .from(tableName)
+        .update({
+          sections: {
+            ...claimFormData,
+            [`${sectionKey}_images`]: updated,
+            custom_fields_metadata: customFields,
+            hidden_fields: Array.from(hiddenFields),
+            field_labels: fieldLabels,
+          }
+        })
+        .eq('id', claimId);
 
-    toast.success("Image uploaded successfully!", { id: toastId, duration: 2000 });
-  } catch (err) {
-    console.error("Image upload failed", err);
-    toast.error("Image upload failed. Please try again.", { id: toastId, duration: 2500 });
-  }
-};
+      if (uploadError) throw uploadError;
 
-  const handleRemove = async (index: number) => {
-  const toastId = toast.loading("Removing image...");
+      toast.success(`${files.length} image(s) uploaded successfully!`, { id: toastId, duration: 2000 });
+    } catch (err) {
+      console.error("Image upload failed", err);
+      toast.error("Image upload failed. Please try again.", { id: toastId, duration: 2500 });
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
-  try {
-    const updated = [...images];
-    updated[index] = "";
-    setImages(updated);
+ const handleRemove = async (index: number) => {
+    const toastId = toast.loading("Removing image...");
 
-    // CRITICAL: Detect table type using service_id/company_id
-const tableName = (claim as any).claim_type === 'vas' 
-  ? 'vas_reports' 
-  : (claim as any).claim_type=== 'client' 
-    ? 'client_reports' 
-    : 'claims';
- 
-    console.log('💾 Removing image from table:', tableName);
+    try {
+      const updated = [...images];
+      updated[index] = "";
+      setImages(updated);
 
-    const { error: removeError } = await supabase
-      .from(tableName)
-      .update({
-        sections: {
-          ...claimFormData,
-          [`${sectionKey}_images`]: updated,
-          custom_fields_metadata: customFields,
-          hidden_fields: Array.from(hiddenFields),
-          field_labels: fieldLabels,
-        }
-      })
-      .eq('id', claimId);
+      const tableName = (claim as any).claim_type === 'vas' 
+        ? 'vas_reports' 
+        : (claim as any).claim_type === 'client' 
+          ? 'client_reports' 
+          : 'claims';
 
-    if (removeError) throw removeError;
+      const { error: removeError } = await supabase
+        .from(tableName)
+        .update({
+          sections: {
+            ...claimFormData,
+            [`${sectionKey}_images`]: updated,
+            custom_fields_metadata: customFieldsRef.current,
+            hidden_fields: Array.from(hiddenFieldsRef.current),
+            field_labels: fieldLabelsRef.current,
+          }
+        })
+        .eq('id', claimId);
 
-    toast.success("Image removed successfully.", { id: toastId, duration: 2000 });
-  } catch (error) {
-    console.error("Failed to remove image:", error);
-    toast.error("Failed to remove image.", { id: toastId, duration: 2500 });
-  }
-};
+      if (removeError) throw removeError;
+
+      // Invalidate query to refresh claim data
+      queryClient.invalidateQueries({ queryKey: ["claim", claimId] });
+
+      toast.success("Image removed successfully.", { id: toastId, duration: 2000 });
+    } catch (error) {
+      console.error("Failed to remove image:", error);
+      toast.error("Failed to remove image.", { id: toastId, duration: 2500 });
+    }
+  };
+
+  const uploadedImages = images.filter(Boolean);
+  const remainingSlots = 6 - uploadedImages.length;
 
   return (
-    <div className="mt-4">
-      <p className="text-sm font-semibold mb-2">Optional Images</p>
-      <div className="grid grid-cols-3 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={`${sectionKey}-img-${i}`}
-            className="border border-dashed border-gray-300 rounded-md flex items-center justify-center relative aspect-square bg-gray-50"
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold">Section Images ({uploadedImages.length}/6)</p>
+        {remainingSlots > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2"
           >
-            {images[i] ? (
-              <div className="relative w-full h-full">
-                <img
-                  src={images[i]}
-                  alt={`Uploaded ${i + 1}`}
-                  className="object-cover w-full h-full rounded-md"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemove(i)}
-                  className="absolute top-1 right-1 bg-white/70 rounded-full p-1 text-red-600"
+            <Plus className="w-4 h-4" />
+            Upload Images ({remainingSlots} slots available)
+          </Button>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleMultipleUpload}
+      />
+
+      {uploadedImages.length > 0 ? (
+        <div className="relative">
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            {images.map((img, i) => 
+              img ? (
+                <div
+                  key={`${sectionKey}-img-${i}`}
+                  className="relative flex-shrink-0 w-40 h-40 rounded-lg border-2 border-gray-200 overflow-hidden group cursor-pointer"
+                  onClick={() => {
+                    console.log('Image clicked:', img);
+                    setSelectedImage(img);
+                  }}
                 >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <label className="cursor-pointer text-gray-400 text-sm">
-                + Upload
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => handleUpload(e, i)}
-                />
-              </label>
+                  <img
+                    src={img}
+                    alt={`Upload ${i + 1}`}
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemove(i);
+                    }}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
+                    title="Remove image"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : null
             )}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <Upload className="w-10 h-10 text-gray-400" />
+            <p className="text-sm text-gray-500">No images uploaded yet</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Upload Images
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Dialog */}
+      <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black/15 backdrop-blur-sm border-2 border-[#ccc] rounded-lg">
+          <div className="relative w-full h-[95vh] flex items-center justify-center p-4">
+            <img
+              src={selectedImage || ''}
+              alt="Enlarged view"
+              className="max-w-full max-h-full object-contain"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-4 right-4 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-colors"
+              title="Close"
+            >
+              
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
@@ -279,7 +363,7 @@ const fieldLabelsRef = useRef<Record<string, string>>({});
   const updateTemplateMutation = useUpdateTemplate();
   // State for collapsible sections
   const [openSections, setOpenSections] = useState<Record<string,boolean>>({
-    section1: false,
+    section1: true,
     section2: false,
     section3: false,
     section4: false,
@@ -375,7 +459,7 @@ useEffect(() => {
       setValue(key, value);
     }
   });
-}, [claim?.sections, setValue]);
+}, [claim.id, setValue]);
 
   //autosave handler
   const handleAutosave = useCallback(async (data: Record<string, unknown>) => {
@@ -408,13 +492,15 @@ useEffect(() => {
     throw error;
   }
 
+  queryClient.invalidateQueries({ queryKey: ["claim", claim.id] });
+
   console.log('✅ Autosave completed');
 }, [claim.id, claim.claim_type]);
 
   useAutosave({
     control,
     onSave: handleAutosave,
-    delay: 3000,
+    delay: 1500,
     enabled: true,
   });
 
@@ -432,7 +518,7 @@ const isInitialMount = useRef(true);
       isInitialMount.current = false;
       reset(claim.sections || {});
     }
-  }, [reset]); // Don't depend on claim.sections to prevent reset on every change
+  }, [claim.id]); // Don't depend on claim.sections to prevent reset on every change
 
   const onSubmit = async (data: Record<string, unknown>) => {
   console.log('🔥 onSubmit called with data:', data);
@@ -467,7 +553,7 @@ const isInitialMount = useRef(true);
         current_template_name: currentTemplate?.name, // ADD THIS LINE
         is_template_modified: isTemplateModified, // ADD THIS LINE
         dynamic_sections_metadata: JSON.parse(JSON.stringify( dynamicSections.map(section => {
-// Merge custom fields that belong to this section into section.fields
+  // Merge custom fields that belong to this section into section.fields
           const sectionCustomFields = customFields
             .filter(f => f.section === section.id)
             .map(field => ({
@@ -517,7 +603,7 @@ const isInitialMount = useRef(true);
         toast.error(`Failed to save: ${error.message}`);
         return;
       }
-
+      queryClient.invalidateQueries({ queryKey: ["claim", claim.id] });
       console.log('✅ Save completed');
       toast.success("Additional information saved successfully!");
 
@@ -579,7 +665,7 @@ const isInitialMount = useRef(true);
         newSet.delete(fieldName);
         return newSet;
       });
-      
+      queryClient.invalidateQueries({ queryKey: ["claim", claim.id] });
       toast.success("Field saved successfully!", {
         duration: 2000,
       });
@@ -1394,7 +1480,7 @@ const loadTemplate = (template: FormTemplate) => {
   const section4Custom = customFields.filter((f) => f.section === 'section4');
 
  const renderField = (field: FormField, isEditing = false) => {
-    const showActions = isEditing || pendingSaves.has(field.name); 
+    const showActions = isEditing; 
     const fieldValue = watch(field.name);
     const displayedLabel = fieldLabels[field.name] ?? field.label;
     const isEditingLabel = editingLabels.has(field.name);
@@ -1492,10 +1578,7 @@ const loadTemplate = (template: FormTemplate) => {
                         setPendingSaves(prev => new Set([...prev, field.name]));
                       }
                     },
-                    onBlur: (e) => {
-                      if (pendingSaves.has(field.name)) {
-                        saveCustomField(field.name);
-                      }
+                    onBlur: () => {
                     }
                   })}
                 />
@@ -2234,6 +2317,10 @@ style={{ backgroundColor: '#6B7FB8' }}
                 hiddenFields={hiddenFields}
                 fieldLabels={fieldLabels}
                 sectionImages={sectionImages}
+                queryClient={queryClient}
+                customFieldsRef={customFieldsRef}
+                hiddenFieldsRef={hiddenFieldsRef}
+                fieldLabelsRef={fieldLabelsRef}
               />
             </div>
           </CollapsibleContent>
