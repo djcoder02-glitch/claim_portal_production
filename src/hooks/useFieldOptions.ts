@@ -13,10 +13,30 @@ export const useFieldOptions = (fieldName: string) => {
     queryFn: async () => {
       console.log("Fetching options for field:", fieldName);
       
+      // Get user's company_id for filtering
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (!userData.user?.id) {
+        console.warn("User not authenticated");
+        return [];
+      }
+
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', userData.user.id)
+        .single();
+
+      if (!userProfile?.company_id) {
+        console.warn("User has no company_id");
+        return [];
+      }
+
       const { data, error } = await supabase
         .from("field_options")
         .select("option_value")
         .eq("field_name", fieldName)
+        .eq("company_id", userProfile.company_id)
         .eq("is_active", true)
         .order("option_value"); // Sort alphabetically
       
@@ -35,6 +55,13 @@ export const useFieldOptions = (fieldName: string) => {
     staleTime: 5 * 60 * 1000,
     // Enable the query only if fieldName is provided
     enabled: !!fieldName,
+    // Don't retry on auth errors
+    retry: (failureCount, error: any) => {
+      if (error?.code === '42703' || error?.code === 'PGRST116') {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 };
 
@@ -50,11 +77,32 @@ export const useAddFieldOption = () => {
     mutationFn: async ({ fieldName, optionValue }: { fieldName: string; optionValue: string }) => {
       console.log(`Adding option "${optionValue}" to field "${fieldName}"`);
       
-      // Call our database function
-      const { error } = await supabase.rpc('add_field_option', {
-        field_name: fieldName,
-        option_value: optionValue.trim()
-      });
+      // Get user's company_id
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (!userData.user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', userData.user.id)
+        .single();
+
+      if (!userProfile?.company_id) {
+        throw new Error('User has no company_id');
+      }
+
+      // Insert directly instead of using RPC
+      const { error } = await supabase
+        .from('field_options')
+        .insert({
+          field_name: fieldName,
+          option_value: optionValue.trim(),
+          company_id: userProfile.company_id,
+          is_active: true
+        });
       
       if (error) {
         console.error("Database error:", error);
@@ -77,9 +125,17 @@ export const useAddFieldOption = () => {
     },
     
     // Error handler
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Failed to add field option:", error);
-      toast.error("Failed to add new option. Please try again.");
+      
+      // Handle specific error cases
+      if (error?.code === '23505') {
+        toast.error("This option already exists!");
+      } else if (error?.message?.includes('not authenticated')) {
+        toast.error("Please log in to add options");
+      } else {
+        toast.error("Failed to add new option. Please try again.");
+      }
     },
   });
 };
