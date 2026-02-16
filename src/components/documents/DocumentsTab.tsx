@@ -1,597 +1,411 @@
 import { useState } from "react";
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Link2, Copy, Check } from "lucide-react";
-import { UploadedDocumentsGrid } from "./UploadedDocumentsGrid";
-import { DocumentRequirementSection } from "./DocumentRequirementSection";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { 
+  Upload, 
+  Link as LinkIcon, 
+  FileText, 
+  Copy,
+  CheckCircle,
+  AlertCircle,
+  Loader2
+} from "lucide-react";
+import { UploadedDocumentsGrid } from "./UploadedDocumentsGrid";
 import { generateBatchUploadToken } from "@/lib/uploadTokens";
-import { Upload as UploadIcon } from "lucide-react";
-import { uploadDocument } from "@/lib/uploadDocument";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { uploadDocument, validateFileSize } from "@/lib/uploadDocument";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { type Claim } from "@/hooks/useClaims";
 
 interface DocumentsTabProps {
-  claimId: string;
+  claim: Claim;
 }
 
-export const DocumentsTab = ({ claimId }: DocumentsTabProps) => {
-  const location = useLocation();
-  const [uploadLinkDialogOpen, setUploadLinkDialogOpen] = useState(false);
-  const [uploadLink, setUploadLink] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [assignedDocuments, setAssignedDocuments] = useState<Record<string, any>>({});
+interface UploadedDocument {
+  id: string;
+  file_name: string;
+  file_path: string;
+  created_at: string;
+  file_size: number;
+  metadata?: any;
+  field_label?: string | null;
+}
+
+export const DocumentsTab = ({ claim }: DocumentsTabProps) => {
   const queryClient = useQueryClient();
-  const [customSections, setCustomSections] = useState<string[]>([]);
-  const [showAddSection, setShowAddSection] = useState(false);
-  const [newSectionName, setNewSectionName] = useState("");
+  const [uploadLink, setUploadLink] = useState<string>("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null); 
-
-  // AUTO-DETECT which table and field to use based on URL
-  const isVASReport = location.pathname.includes("/value-added-services/");
-  const isClientReport = location.pathname.includes("/clients/");
-  
-  const documentTable = isVASReport 
-    ? "vas_documents"
-    : isClientReport
-    ? "client_documents"
-    : "claim_documents";
-  
-  const reportTable = isVASReport
-    ? "vas_reports"
-    : isClientReport
-    ? "client_reports"
-    : "claims";
-    
-  const reportIdField = documentTable === "claim_documents" ? "claim_id" : "report_id";
-
-  // Fetch claim/report to get policy_type_id or service/company info
-  const { data: claim } = useQuery({
-    queryKey: ['claim', claimId, reportTable],
-    queryFn: async () => {
-      let query = supabase
-        .from(reportTable)
-        .select('*')
-        .eq('id', claimId)
-        .single();
-      
-      // Add policy_types join only for claims
-      if (reportTable === 'claims') {
-        query = supabase
-          .from(reportTable)
-          .select('*, policy_types(id, name, required_documents)')
-          .eq('id', claimId)
-          .single();
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
+  const [viewDocumentUrl, setViewDocumentUrl] = useState<string | null>(null);
 
   // Fetch uploaded documents
-  const { data: documents = [], isLoading } = useQuery({
-    queryKey: ['uploaded-documents', claimId, documentTable],
+  const { data: uploadedDocuments = [], refetch: refetchDocuments, isLoading } = useQuery<UploadedDocument[]>({
+    queryKey: ["claim-documents", claim?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from(documentTable)
-        .select('*')
-        .eq(reportIdField, claimId)
-        .order('created_at', { ascending: false });
+      if (!claim?.id) return [];
 
-      if (error) throw error;
-      return data?.map((doc) => ({
-        ...doc,
-        field_label: doc.field_label ?? undefined,
-        is_selected: doc.is_selected ?? undefined,
-        token_expires_at: doc.token_expires_at ?? undefined,
-        upload_token: doc.upload_token ?? undefined,
-        uploaded_via_link: doc.uploaded_via_link ?? undefined,
+      console.log('Fetching documents for claim:', claim.id);
+
+      const { data, error } = await supabase
+        .from("claim_documents")
+        .select("*")
+        .eq("claim_id", claim.id)
+        .not("file_type", "eq", "placeholder")
+        .not("file_name", "like", "__TOKEN_PLACEHOLDER_%")
+        .not("file_name", "like", "__BATCH_TOKEN_%")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error('Document fetch error:', error);
+        throw error;
+      }
+
+      console.log('Fetched documents:', data?.length);
+      
+      return (data || []).map(doc => ({
+        id: doc.id,
+        file_name: doc.file_name,
+        file_path: doc.file_path,
+        created_at: doc.created_at || new Date().toISOString(),
+        file_size: doc.file_size || 0,
+        metadata: doc.metadata as any,
+        field_label: doc.field_label,
       }));
+    },
+    enabled: !!claim?.id,
+  });
+
+  // Generate upload link mutation
+  const generateLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!claim?.id) throw new Error("Claim ID not available");
+      const tokenData = await generateBatchUploadToken(claim.id);
+      return tokenData.uploadUrl;
+    },
+    onSuccess: (url) => {
+      setUploadLink(url);
+      toast.success("Upload link generated successfully!");
+    },
+    onError: (error) => {
+      console.error("Error generating link:", error);
+      toast.error("Failed to generate upload link");
     },
   });
 
-  // Get required documents from policy type (only for claims)
-  const requiredDocuments = (claim?.policy_types?.required_documents as string[]) || [];
-
-useEffect(() => {
-  console.log("Documents changed, reloading sections. Documents count:", documents?.length);
-  
-  if (documents) {
-    // Load assigned documents
-    const assigned = documents.reduce((acc, doc) => {
-      if (doc.field_label && doc.is_selected && doc.file_type !== 'placeholder') {
-        acc[doc.field_label] = doc;
-      }
-      return acc;
-    }, {} as Record<string, any>);
-    
-    setAssignedDocuments(assigned);
-  }
-  
-  // Load custom sections from claim/report metadata
-  if (claim?.metadata?.custom_document_sections) {
-    setCustomSections(claim.metadata.custom_document_sections);
-  }
-}, [documents, claim]);
-
-
-  // Generate upload link
-  const handleGenerateLink = async () => {
-    try {
-      const tokenData = await generateBatchUploadToken(claimId, 168); // 7 days
-      setUploadLink(tokenData.uploadUrl);
-      setUploadLinkDialogOpen(true);
-      setCopied(false);
-      toast.success("Upload link generated!");
-    } catch (error) {
-      console.error("Error generating link:", error);
-      toast.error("Failed to generate upload link");
-    }
-  };
-
-  // Copy link to clipboard
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(uploadLink);
-      setCopied(true);
-      toast.success("Link copied to clipboard!");
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      toast.error("Failed to copy link");
-    }
-  };
-
   // Delete document mutation
-  const deleteMutation = useMutation({
+  const deleteDocumentMutation = useMutation({
     mutationFn: async (documentId: string) => {
       const { error } = await supabase
-        .from(documentTable)
+        .from("claim_documents")
         .delete()
-        .eq('id', documentId);
+        .eq("id", documentId);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['uploaded-documents', claimId, documentTable] });
+      queryClient.invalidateQueries({ queryKey: ["claim-documents", claim?.id] });
       toast.success("Document deleted successfully");
     },
     onError: (error) => {
-      console.error("Delete error:", error);
+      console.error("Error deleting document:", error);
       toast.error("Failed to delete document");
     },
   });
 
-  const assignMutation = useMutation({
-  mutationFn: async ({ documentId, fieldLabel }: { documentId: string; fieldLabel: string }) => {
-    // First check what kind of document we're assigning
-    const { data: docToAssign } = await supabase
-      .from(documentTable)
-      .select('file_type')
-      .eq('id', documentId)
-      .single();
+  // Debug: Log claim data
+console.log('DocumentsTab received claim:', claim);
+console.log('Claim ID:', claim?.id);
 
-    // Update the document
-    const { error } = await supabase
-      .from(documentTable)
-      .update({ 
-        field_label: fieldLabel,
-        is_selected: true 
-      })
-      .eq('id', documentId);
+if (!claim) {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+        <p className="text-gray-600">Waiting for claim data...</p>
+        <p className="text-xs text-gray-400 mt-2">Claim prop is undefined</p>
+      </div>
+    </div>
+  );
+}
 
-    if (error) throw error;
+if (!claim.id) {
+  return (
+    <div className="flex items-center justify-center h-64 bg-red-50 border-2 border-red-200 rounded">
+      <div className="text-center">
+        <p className="text-red-600 font-semibold">Error: Claim has no ID</p>
+        <p className="text-xs text-gray-600 mt-2">Claim object: {JSON.stringify(claim)}</p>
+      </div>
+    </div>
+  );
+}
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <p className="ml-3 text-gray-600">Loading documents...</p>
+      </div>
+    );
+  }
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(uploadLink);
+    setLinkCopied(true);
+    toast.success("Link copied to clipboard!");
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
     
-    // ONLY delete placeholder if we assigned a REAL document (not a placeholder)
-    if (docToAssign?.file_type !== 'placeholder') {
-      await supabase
-        .from(documentTable)
-        .delete()
-        .eq(reportIdField, claimId)
-        .eq('field_label', fieldLabel)
-        .eq('file_type', 'placeholder');
+    const invalidFiles: string[] = [];
+    const validFiles: File[] = [];
+
+    files.forEach(file => {
+      const validation = validateFileSize(file);
+      if (!validation.valid) {
+        invalidFiles.push(validation.error!);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach(error => toast.error(error));
     }
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ['uploaded-documents', claimId, documentTable] });
-  },
-  onError: (error) => {
-    console.error("Assign error:", error);
-    toast.error("Failed to assign document");
-  },
-});
 
+    if (validFiles.length > 0) {
+      setSelectedFiles(validFiles);
+      setUploadDialogOpen(true);
+    }
 
-  
-  // View document
-  const handleViewDocument = async (filePath: string) => {
+    e.target.value = '';
+  };
+
+  const handleDirectUpload = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setIsUploading(true);
+
     try {
-      // Check if it's already a full URL (S3) or a Supabase storage path
-      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-        // It's already a full URL from S3 - open directly
-        window.open(filePath, '_blank');
-      } else {
-        // It's a Supabase storage path - need signed URL
-        const { data, error } = await supabase.storage
-          .from("claim-documents")
-          .createSignedUrl(filePath, 3600); // URL valid for 1 hour
-        
-        if (error) throw error;
-        window.open(data.signedUrl, '_blank');
-      }
-    } catch (error) {
-      toast.error("Failed to load document preview");
-      console.error(error);
-    }
-  };
-
-  // Assign document to section
-  const handleAssignDocument = (section: string, document: any) => {
-    setAssignedDocuments(prev => ({
-      ...prev,
-      [section]: document
-    }));
-    assignMutation.mutate({ documentId: document.id, fieldLabel: section });
-    toast.success(`Document assigned to ${section}`);
-  };
-
-
-  // Remove document from section
-  const handleRemoveDocument = async (section: string) => {
-    const docToRemove = assignedDocuments[section];
-    
-    if (docToRemove) {
-      const { error } = await supabase
-        .from(documentTable)
-        .update({ 
-          field_label: null,
-          is_selected: false 
-        })
-        .eq('id', docToRemove.id);
-
-      if (!error) {
-        setAssignedDocuments(prev => {
-          const newAssigned = { ...prev };
-          delete newAssigned[section];
-          return newAssigned;
-        });
-        queryClient.invalidateQueries({ queryKey: ['uploaded-documents', claimId, documentTable] });
-        toast.success("Document removed from section");
-      } else {
-        toast.error("Failed to remove document");
-      }
-    }
-  };
-
-// Handle direct file upload
-const handleDirectUpload = async (files: FileList | null) => {
-  if (!files || files.length === 0) return;
-  
-  setIsUploading(true);
-  let successCount = 0;
-  
-  try {
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const { data: userData } = await supabase.auth.getUser();
       
-      try {
-        await uploadDocument(file, claimId);
-        successCount++;
-      } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error);
-        toast.error(`Failed to upload ${file.name}`);
+      if (!userData.user?.id) {
+        toast.error("User not authenticated");
+        setIsUploading(false);
+        return;
       }
+
+      const userName = userData.user.email || "Admin";
+
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', userData.user.id)
+        .single();
+
+      if (!userProfile?.company_id) {
+        toast.error("User has no company");
+        setIsUploading(false);
+        return;
+      }
+
+      for (const file of selectedFiles) {
+        try {
+          const result = await uploadDocument(
+            file,
+            claim.id,
+            userName,
+            userProfile.company_id
+          );
+
+          await supabase
+            .from("claim_documents")
+            .insert({
+              claim_id: claim.id,
+              company_id: userProfile.company_id,
+              file_name: file.name,
+              file_path: result.url,
+              file_type: file.type,
+              file_size: file.size,
+              uploaded_by: userData.user.id,
+              uploaded_via_link: false,
+              is_selected: false,
+            });
+
+          toast.success(`${file.name} uploaded successfully`);
+        } catch (error) {
+          console.error("Upload error:", error);
+          toast.error(`Failed to upload ${file.name}`);
+        }
+      }
+
+      setIsUploading(false);
+      setUploadDialogOpen(false);
+      setSelectedFiles([]);
+      refetchDocuments();
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Upload failed");
+      setIsUploading(false);
     }
-    
-    if (successCount > 0) {
-      toast.success(`Successfully uploaded ${successCount} file(s)`);
-      queryClient.invalidateQueries({ queryKey: ['uploaded-documents', claimId, documentTable] });
-    }
-  } finally {
-    setIsUploading(false);
-    // Reset the file input
-    const input = document.getElementById('direct-upload-input') as HTMLInputElement;
-    if (input) input.value = '';
-  }
-};
-
-
-const handleAddCustomSection = async () => {
-  if (!newSectionName.trim()) {
-    toast.error("Please enter a section name");
-    return;
-  }
-
-  if (customSections.includes(newSectionName.trim())) {
-    toast.error("This section already exists");
-    return;
-  }
-
-  const updatedSections = [...customSections, newSectionName.trim()];
-  
-  // Update claim/report metadata
-  const { error } = await supabase
-    .from(reportTable)
-    .update({
-      metadata: {
-        ...claim?.metadata,
-        custom_document_sections: updatedSections
-      }
-    })
-    .eq('id', claimId);
-
-  if (!error) {
-    setCustomSections(updatedSections);
-    setNewSectionName("");
-    setShowAddSection(false);
-    queryClient.invalidateQueries({ queryKey: ['claim', claimId, reportTable] });
-    toast.success("Custom section added");
-  } else {
-    toast.error("Failed to add section");
-  }
-};
-
-const handleRemoveCustomSection = async (sectionName: string) => {
-  const updatedSections = customSections.filter(s => s !== sectionName);
-  
-  // Also remove the document assignment if exists
-  const docToRemove = assignedDocuments[sectionName];
-  if (docToRemove) {
-    await supabase
-      .from(documentTable)
-      .update({ 
-        field_label: null,
-        is_selected: false 
-      })
-      .eq('id', docToRemove.id);
-  }
-  
-  // Update claim/report metadata
-  const { error } = await supabase
-    .from(reportTable)
-    .update({
-      metadata: {
-        ...claim?.metadata,
-        custom_document_sections: updatedSections
-      }
-    })
-    .eq('id', claimId);
-
-  if (!error) {
-    setCustomSections(prev => prev.filter(s => s !== sectionName));
-    queryClient.invalidateQueries({ queryKey: ['claim', claimId, reportTable] });
-    toast.success("Custom section removed");
-  } else {
-    toast.error("Failed to remove section");
-  }
-};
-
-
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-2xl">Documents</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage all documents for this {isVASReport ? 'VAS report' : isClientReport ? 'client report' : 'claim'}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              {/* Direct Upload Button */}
-              <div>
+      <Tabs defaultValue="upload" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="upload">Upload Documents</TabsTrigger>
+          <TabsTrigger value="uploaded">
+            Uploaded Documents
+            <Badge variant="secondary" className="ml-2">
+              {uploadedDocuments.length}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="upload" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="w-5 h-5" />
+                Direct Upload
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Upload documents directly from your computer (max 5MB per file)
+                </p>
                 <input
                   type="file"
-                  id="direct-upload-input"
                   multiple
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
-                  onChange={(e) => handleDirectUpload(e.target.files)}
+                  onChange={handleFileSelect}
                   className="hidden"
-                  disabled={isUploading}
+                  id="file-upload"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
                 />
-                <Button
-                  onClick={() => document.getElementById('direct-upload-input')?.click()}
-                  variant="outline"
-                  className="gap-2"
-                  disabled={isUploading}
-                >
-                  <UploadIcon className="w-4 h-4" />
-                  {isUploading ? "Uploading..." : "Upload Files"}
+                <Button asChild>
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Choose Files
+                  </label>
                 </Button>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Generate Link Button */}
-              <Button onClick={handleGenerateLink} className="gap-2">
-                <Link2 className="w-4 h-4" />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LinkIcon className="w-5 h-5" />
                 Generate Upload Link
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Uploaded Documents Grid */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Uploaded Documents</CardTitle>
-          <p className="text-sm text-gray-600">
-            All documents uploaded via public links
-          </p>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500">Loading documents...</p>
-            </div>
-          ) : (
-            <UploadedDocumentsGrid
-              documents={documents
-                .filter(doc => 
-                  doc.file_type !== 'placeholder' && 
-                  !doc.file_name.startsWith('BATCH_TOKEN_') &&
-                  !doc.file_name.startsWith('__BATCH_TOKEN_') &&
-                  !doc.file_name.startsWith('__TOKEN_')
-                )
-                .map(doc => ({
-                  id: doc.id,
-                  field_label: doc.field_label || undefined,
-                  file_name: doc.file_name,
-                  file_type: doc.file_type,
-                  file_path: doc.file_path,
-                  file_size: doc.file_size,
-                  uploaded_by: doc.uploaded_by || null,
-                  created_at: doc.created_at,
-                  is_selected: doc.is_selected || undefined,
-                  token_expires_at: doc.token_expires_at || undefined,
-                  upload_token: doc.upload_token || undefined,
-                  uploaded_via_link: doc.uploaded_via_link || undefined,
-                }))} 
-              onDelete={(id) => deleteMutation.mutate(id)}
-              onView={handleViewDocument}
-            />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Document Requirements Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Upload Documents</CardTitle>
-          <p className="text-sm text-gray-600">
-            {reportTable === 'claims' 
-              ? 'These are suggested document types based on your policy type. Upload what you have available.'
-              : 'Add and organize documents for this report.'
-            }
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {requiredDocuments.length === 0 && customSections.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              {reportTable === 'claims' 
-                ? 'No document requirements defined for this policy type.'
-                : 'No document sections yet. Add custom sections to organize your documents.'
-              }
-            </div>
-          ) : (
-            <>
-              {/* Required Documents from Policy Type (only for claims) */}
-              {requiredDocuments.map((docLabel: string, index: number) => (
-                <DocumentRequirementSection
-                  key={docLabel}
-                  label={docLabel}
-                  description={`Upload ${docLabel} document for this claim`}
-                  recommended={index < 2}
-                  claimId={claimId}
-                  assignedDocument={assignedDocuments[docLabel]}
-                  onAssign={(doc) => handleAssignDocument(docLabel, doc)}
-                  onRemove={() => handleRemoveDocument(docLabel)}
-                  onView={handleViewDocument}
-                  isCustom={false}
-                />
-              ))}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Generate a shareable link for external users to upload documents
+              </p>
               
-              {/* Custom Sections */}
-              {customSections.map((sectionName) => (
-                <DocumentRequirementSection
-                  key={sectionName}
-                  label={sectionName}
-                  description={`Upload ${sectionName} document`}
-                  recommended={false}
-                  claimId={claimId}
-                  assignedDocument={assignedDocuments[sectionName]}
-                  onAssign={(doc) => handleAssignDocument(sectionName, doc)}
-                  onRemove={() => handleRemoveDocument(sectionName)}
-                  onView={handleViewDocument}
-                  isCustom={true}
-                  onRemoveSection={() => handleRemoveCustomSection(sectionName)}
-                />
-              ))}
-            </>
-          )}
-          
-          {/* Add Custom Section Button/Form */}
-          {!showAddSection ? (
-            <Button 
-              variant="outline" 
-              onClick={() => setShowAddSection(true)}
-              className="w-full border-dashed border-2"
-            >
-              + Add Custom Document Section
-            </Button>
-          ) : (
-            <Card className="border-2 border-blue-300">
-              <CardContent className="pt-6">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter section name (e.g., Purchase Order)"
-                    value={newSectionName}
-                    onChange={(e) => setNewSectionName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddCustomSection()}
-                  />
-                  <Button onClick={handleAddCustomSection}>Add</Button>
-                  <Button variant="outline" onClick={() => {
-                    setShowAddSection(false);
-                    setNewSectionName("");
-                  }}>
-                    Cancel
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </CardContent>
-      </Card>
+              <Button
+                onClick={() => generateLinkMutation.mutate()}
+                disabled={generateLinkMutation.isPending}
+              >
+                {generateLinkMutation.isPending ? "Generating..." : "Generate Upload Link"}
+              </Button>
 
-      {/* Upload Link Dialog */}
-      <Dialog open={uploadLinkDialogOpen} onOpenChange={setUploadLinkDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+              {uploadLink && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={uploadLink}
+                      readOnly
+                      className="flex-1 px-3 py-2 border rounded-md bg-gray-50"
+                    />
+                    <Button
+                      onClick={handleCopyLink}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {linkCopied ? (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Share this link with external users. Link expires in 7 days.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="uploaded">
+          <UploadedDocumentsGrid
+            documents={uploadedDocuments}
+            onDelete={(id) => deleteDocumentMutation.mutate(id)}
+            onView={(url) => setViewDocumentUrl(url)}
+          />
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Upload Link Generated</DialogTitle>
-            <DialogDescription>
-              Share this link with external users to upload documents. Link expires in 7 days.
-            </DialogDescription>
+            <DialogTitle>Upload {selectedFiles.length} File(s)</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="p-3 bg-gray-50 rounded-lg border">
-              <p className="text-sm font-mono break-all">{uploadLink}</p>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleCopyLink} className="flex-1 gap-2">
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy Link
-                  </>
-                )}
+            {selectedFiles.map((file, index) => (
+              <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
+                <FileText className="w-4 h-4" />
+                <span className="flex-1 text-sm">{file.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </span>
+              </div>
+            ))}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
+                Cancel
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setUploadLinkDialogOpen(false)}
-              >
-                Close
+              <Button onClick={handleDirectUpload} disabled={isUploading}>
+                {isUploading ? "Uploading..." : "Upload"}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewDocumentUrl} onOpenChange={() => setViewDocumentUrl(null)}>
+        <DialogContent className="max-w-4xl h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Document Viewer</DialogTitle>
+          </DialogHeader>
+          <iframe
+            src={viewDocumentUrl || ''}
+            className="w-full h-full border-0"
+            title="Document viewer"
+          />
         </DialogContent>
       </Dialog>
     </div>

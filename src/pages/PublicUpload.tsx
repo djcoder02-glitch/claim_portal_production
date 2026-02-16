@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, FileText, CheckCircle, XCircle, Loader2, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Upload, FileText, CheckCircle, XCircle, Loader2, Trash2, AlertCircle } from "lucide-react";
 import { validateBatchUploadToken, saveUploadedDocument } from "@/lib/uploadTokens";
-import { uploadDocument } from "@/lib/uploadDocument";
+import { uploadDocument, validateFileSize } from "@/lib/uploadDocument";
 import { toast } from "sonner";
 
 interface UploadedFile {
@@ -16,12 +17,16 @@ interface UploadedFile {
   error?: string;
 }
 
+const MAX_FILE_SIZE_MB = 5;
+const MAX_FILES = 10;
+
 export const PublicUpload = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 
   const [tokenValid, setTokenValid] = useState<boolean | null>(null);
   const [claimId, setClaimId] = useState<string>("");
+  const [companyId, setCompanyId] = useState<string>("");
   const [uploaderName, setUploaderName] = useState("");
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -37,6 +42,7 @@ export const PublicUpload = () => {
       if (result) {
         setTokenValid(true);
         setClaimId(result.claimId);
+        setCompanyId(result.companyId);
       } else {
         setTokenValid(false);
       }
@@ -48,17 +54,40 @@ export const PublicUpload = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     
-    if (files.length + selectedFiles.length > 10) {
-      toast.error("Maximum 10 files allowed");
+    if (files.length + selectedFiles.length > MAX_FILES) {
+      toast.error(`Maximum ${MAX_FILES} files allowed`);
       return;
     }
 
-    const newFiles: UploadedFile[] = selectedFiles.map(file => ({
-      file,
-      status: 'pending'
-    }));
+    // Validate file sizes
+    const invalidFiles: string[] = [];
+    const validFiles: File[] = [];
 
-    setFiles(prev => [...prev, ...newFiles]);
+    selectedFiles.forEach(file => {
+      const validation = validateFileSize(file);
+      if (!validation.valid) {
+        invalidFiles.push(validation.error!);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (invalidFiles.length > 0) {
+      invalidFiles.forEach(error => toast.error(error));
+    }
+
+    if (validFiles.length > 0) {
+      const newFiles: UploadedFile[] = validFiles.map(file => ({
+        file,
+        status: 'pending'
+      }));
+
+      setFiles(prev => [...prev, ...newFiles]);
+      toast.success(`${validFiles.length} file(s) added`);
+    }
+
+    // Reset input
+    e.target.value = '';
   };
 
   const removeFile = (index: number) => {
@@ -66,77 +95,76 @@ export const PublicUpload = () => {
   };
 
   const handleUpload = async () => {
-  if (!uploaderName.trim()) {
-    toast.error("Please enter your name");
-    return;
-  }
-
-  if (files.length === 0) {
-    toast.error("Please select at least one file");
-    return;
-  }
-
-  setIsUploading(true);
-
-  for (let i = 0; i < files.length; i++) {
-    const fileData = files[i];
-    
-    if (fileData.status === 'success') continue;
-
-    setFiles(prev => prev.map((f, idx) => 
-      idx === i ? { ...f, status: 'uploading' as const } : f
-    ));
-
-    try {
-      console.log(`Uploading file ${i + 1}/${files.length}:`, fileData.file.name);
-
-      // CHANGED: Removed token parameter
-      const result = await uploadDocument(
-        fileData.file,
-        claimId,
-        uploaderName
-      );
-
-      console.log("Upload result:", result);
-
-      // Save to database with the AWS S3 URL
-      await saveUploadedDocument(
-        claimId,
-        fileData.file.name,
-        result.url, // CHANGED: use result.url instead of result.fileUrl
-        fileData.file.size,
-        uploaderName,
-        token!
-      );
-
-      setFiles(prev => prev.map((f, idx) => 
-        idx === i ? { ...f, status: 'success' as const, url: result.url } : f
-      ));
-
-      toast.success(`${fileData.file.name} uploaded successfully`);
-    } catch (error) {
-      console.error("Upload error:", error);
-      
-      setFiles(prev => prev.map((f, idx) => 
-        idx === i ? { 
-          ...f, 
-          status: 'error' as const, 
-          error: error instanceof Error ? error.message : 'Upload failed' 
-        } : f
-      ));
-
-      toast.error(`Failed to upload ${fileData.file.name}`);
+    if (!uploaderName.trim()) {
+      toast.error("Please enter your name");
+      return;
     }
-  }
 
-  setIsUploading(false);
-  
-  const successCount = files.filter(f => f.status === 'success').length;
-  if (successCount === files.length) {
-    toast.success(`All ${successCount} files uploaded successfully!`);
-  }
-};
+    if (files.length === 0) {
+      toast.error("Please select at least one file");
+      return;
+    }
 
+    setIsUploading(true);
+
+    for (let i = 0; i < files.length; i++) {
+      const fileData = files[i];
+      
+      if (fileData.status === 'success') continue;
+
+      setFiles(prev => prev.map((f, idx) => 
+        idx === i ? { ...f, status: 'uploading' as const } : f
+      ));
+
+      try {
+        console.log(`Uploading file ${i + 1}/${files.length}:`, fileData.file.name);
+
+        const result = await uploadDocument(
+          fileData.file,
+          claimId,
+          uploaderName,
+          companyId
+        );
+
+        console.log("Upload result:", result);
+
+        await saveUploadedDocument(
+          claimId,
+          companyId,
+          fileData.file.name,
+          result.url,
+          fileData.file.size,
+          uploaderName,
+          token!
+        );
+
+        setFiles(prev => prev.map((f, idx) => 
+          idx === i ? { ...f, status: 'success' as const, url: result.url } : f
+        ));
+
+        toast.success(`${fileData.file.name} uploaded successfully`);
+      } catch (error) {
+        console.error("Upload error:", error);
+        
+        setFiles(prev => prev.map((f, idx) => 
+          idx === i ? { 
+            ...f, 
+            status: 'error' as const, 
+            error: error instanceof Error ? error.message : 'Upload failed' 
+          } : f
+        ));
+
+        toast.error(`Failed to upload ${fileData.file.name}`);
+      }
+    }
+
+    setIsUploading(false);
+    
+    const successCount = files.filter(f => f.status === 'success').length;
+    if (successCount === files.length) {
+      toast.success(`All ${successCount} files uploaded successfully!`);
+    }
+  };
 
   if (tokenValid === null) {
     return (
@@ -162,6 +190,9 @@ export const PublicUpload = () => {
     );
   }
 
+  const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
+  const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -172,7 +203,7 @@ export const PublicUpload = () => {
               <Upload className="w-8 h-8 text-blue-600" />
               <div>
                 <CardTitle className="text-2xl">Document Upload</CardTitle>
-                <p className="text-sm text-gray-600">Upload up to 10 documents at once</p>
+                <p className="text-sm text-gray-600">Upload up to {MAX_FILES} documents (max {MAX_FILE_SIZE_MB}MB each)</p>
               </div>
             </div>
           </CardHeader>
@@ -191,6 +222,16 @@ export const PublicUpload = () => {
           </CardContent>
         </Card>
 
+        {/* File Size Warning */}
+        {files.length > 0 && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Total size: {totalSizeMB}MB • {files.length}/{MAX_FILES} files • Each file must be under {MAX_FILE_SIZE_MB}MB
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* File Upload Area */}
         <Card>
           <CardContent className="p-6">
@@ -200,7 +241,7 @@ export const PublicUpload = () => {
                 id="file-upload"
                 multiple
                 onChange={handleFileSelect}
-                disabled={isUploading || files.length >= 10}
+                disabled={isUploading || files.length >= MAX_FILES}
                 className="hidden"
                 accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
               />
@@ -210,10 +251,10 @@ export const PublicUpload = () => {
                   Click to select files
                 </p>
                 <p className="text-sm text-gray-500">
-                  Maximum 10 files • PDF, DOC, XLS, Images
+                  Max {MAX_FILES} files • PDF, DOC, XLS, Images • {MAX_FILE_SIZE_MB}MB per file
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
-                  {files.length} / 10 files selected
+                  {files.length} / {MAX_FILES} files selected
                 </p>
               </label>
             </div>
@@ -240,6 +281,9 @@ export const PublicUpload = () => {
                         <p className="text-xs text-gray-500">
                           {(fileData.file.size / 1024 / 1024).toFixed(2)} MB
                         </p>
+                        {fileData.error && (
+                          <p className="text-xs text-red-600 mt-1">{fileData.error}</p>
+                        )}
                       </div>
                     </div>
 
