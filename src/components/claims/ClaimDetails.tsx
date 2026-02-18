@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, FileText, Info, Eye, Upload, CheckCircle2, Clock, AlertCircle, IndianRupee } from "lucide-react";
+import { ArrowLeft, FileText, Info, Eye, Upload, CheckCircle2, Clock, AlertCircle, IndianRupee, Loader2 } from "lucide-react";
 import { useClaimById, useUpdateClaim, useUpdateClaimSilent } from "@/hooks/useClaims";
 import { PolicyDetailsForm } from "./PolicyDetailsForm";
 import { AdditionalInformationForm } from "./AdditionalInformationForm";
@@ -633,9 +633,15 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
                 <FeeBillForm claim={claim} />
               </TabsContent>
 
-              <TabsContent value="documents" className="space-y-6">
-                <DocumentsTab claimId={claim.id} />
-              </TabsContent>
+              {activeTab === "documents" && (
+              claim ? (
+                <DocumentsTab claim={claim} />
+              ) : (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                </div>
+              )
+            )}
               <TabsContent value="assessment" className="space-y-6">
                 <Assessment claim={claim} />
               </TabsContent>

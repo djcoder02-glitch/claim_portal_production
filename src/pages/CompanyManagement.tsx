@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CompanyList } from "@/components/admin/CompanyList";
 import { CompanyEditor, CompanyFormData } from "@/components/admin/CompanyEditor";
 import { CompanyRestrictionsEditor } from "@/components/admin/CompanyRestrictionsEditor";
+import { StorageUsageDashboard } from "@/components/admin/StorageUsageDashboard"; // ADD THIS
 import {
   useCreateCompany,
   useUpdateCompany,
@@ -92,9 +93,14 @@ const CompanyManagement = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Company Management</h1>
-            <p className="text-gray-600">Manage companies and their restrictions</p>
+            <p className="text-gray-600">Manage companies, restrictions, and storage usage</p>
           </div>
         </div>
+      </div>
+
+      {/* Storage Usage Dashboard - NEW SECTION */}
+      <div className="mb-6">
+        <StorageUsageDashboard />
       </div>
 
       {/* Company List */}

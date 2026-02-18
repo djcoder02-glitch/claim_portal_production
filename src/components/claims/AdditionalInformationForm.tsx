@@ -483,6 +483,7 @@ useEffect(() => {
         custom_fields_metadata: customFieldsRef.current,
         hidden_fields: Array.from(hiddenFieldsRef.current),
         field_labels: fieldLabelsRef.current,
+        additional_info_sections: ADDITIONAL_INFO_SECTIONS,
       } as any
     })
     .eq('id', claim.id);
@@ -550,6 +551,7 @@ const isInitialMount = useRef(true);
         custom_fields_metadata: customFields,  // Current custom fields from state
         hidden_fields: Array.from(hiddenFields),
         field_labels: fieldLabels,
+        additional_info_sections: ADDITIONAL_INFO_SECTIONS,
         current_template_name: currentTemplate?.name, // ADD THIS LINE
         is_template_modified: isTemplateModified, // ADD THIS LINE
         dynamic_sections_metadata: JSON.parse(JSON.stringify( dynamicSections.map(section => {
@@ -638,6 +640,7 @@ const isInitialMount = useRef(true);
         custom_fields_metadata: customFields,
         hidden_fields: Array.from(hiddenFields),
         field_labels: fieldLabels,
+        additional_info_sections: ADDITIONAL_INFO_SECTIONS,
       };
       
       // CRITICAL: Detect table type using service_id/company_id
@@ -733,6 +736,7 @@ const isInitialMount = useRef(true);
         sections: {
           ...existingData,
           field_labels: updatedLabels,
+          additional_info_sections: ADDITIONAL_INFO_SECTIONS,
           custom_fields_metadata: customFields as unknown[],
           hidden_fields: Array.from(hiddenFields),
           dynamic_sections_metadata: updatedSections,
@@ -767,6 +771,7 @@ const isInitialMount = useRef(true);
     const dataWithMetadata = {
       ...currentFormData,
       custom_fields_metadata: customFields,
+      additional_info_sections: ADDITIONAL_INFO_SECTIONS,
       hidden_fields: Array.from(updatedHiddenFields),
     };
     

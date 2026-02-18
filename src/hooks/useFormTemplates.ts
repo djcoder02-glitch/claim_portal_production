@@ -50,9 +50,8 @@ export interface DynamicSection {
   color_class: string;
   fields: TemplateField[];
   isCustom: boolean;
-  tables?:TableData[];
+  tables?: TableData[];
 }
-
 
 export const useFormTemplates = (policyTypeId?: string) => {
   return useQuery({
@@ -95,7 +94,7 @@ export const useFormTemplates = (policyTypeId?: string) => {
 
         if (fieldsError) throw fieldsError;
 
-       // Step 4: Combine data with correct column mappings
+        // Step 4: Combine data with correct column mappings
         const result = templates.map(template => ({
           ...template,
           sections: sections
@@ -147,14 +146,26 @@ export const useSaveTemplate = () => {
       sections: DynamicSection[];
     }) => {
       const { data: userData } = await supabase.auth.getUser();
-      
+
+      if (!userData.user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      // Get user's company_id
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', userData.user.id)  // Now TypeScript knows it's not undefined
+        .single();
+
       const { data: template, error: templateError } = await supabase
         .from('form_templates')
         .insert({
           name,
           description,
-          policy_type_id: policyTypeId,
-          created_by: userData.user?.id
+          policy_type_id: policyTypeId || null,  // FIXED: handle undefined
+          created_by: userData.user?.id,
+          company_id: userProfile?.company_id
         })
         .select()
         .single();
@@ -169,8 +180,9 @@ export const useSaveTemplate = () => {
             name: section.name,
             order_index: section.order_index,
             color_class: section.color_class,
-            tables_data: section.tables && section.tables.length > 0 ? section.tables : null
-
+            tables_data: section.tables && section.tables.length > 0 
+            ? JSON.parse(JSON.stringify(section.tables)) 
+            : null
           })
           .select()
           .single();
@@ -180,10 +192,10 @@ export const useSaveTemplate = () => {
         if (section.fields.length > 0) {
           const fieldsToInsert = section.fields.map(field => ({
             section_id: templateSection.id,
-            name: field.name,
-            label: field.label,
-            type: field.type,
-            required: field.required,
+            field_name: field.name,      // FIXED: use field_name
+            field_label: field.label,    // FIXED: use field_label
+            field_type: field.type,      // FIXED: use field_type
+            is_required: field.required, // FIXED: use is_required
             options: field.options ? field.options : null,
             order_index: field.order_index
           }));
@@ -232,7 +244,6 @@ export const useDeleteTemplate = () => {
   });
 };
 
-
 export const useUpdateTemplate = () => {
   const queryClient = useQueryClient();
 
@@ -264,7 +275,7 @@ export const useUpdateTemplate = () => {
         .update({
           name,
           description,
-          policy_type_id: policyTypeId,
+          policy_type_id: policyTypeId || null,  // FIXED: handle undefined
         })
         .eq('id', templateId)
         .select()
@@ -281,7 +292,9 @@ export const useUpdateTemplate = () => {
             name: section.name,
             order_index: section.order_index,
             color_class: section.color_class,
-            tables_data: section.tables && section.tables.length > 0 ? section.tables : null
+            tables_data: section.tables && section.tables.length > 0 
+              ? JSON.parse(JSON.stringify(section.tables)) 
+              : null
           })
           .select()
           .single();
@@ -291,10 +304,10 @@ export const useUpdateTemplate = () => {
         if (section.fields.length > 0) {
           const fieldsToInsert = section.fields.map(field => ({
             section_id: templateSection.id,
-            name: field.name,
-            label: field.label,
-            type: field.type,
-            required: field.required,
+            field_name: field.name,      // FIXED: use field_name
+            field_label: field.label,    // FIXED: use field_label
+            field_type: field.type,      // FIXED: use field_type
+            is_required: field.required, // FIXED: use is_required
             options: field.options ? field.options : null,
             order_index: field.order_index
           }));
