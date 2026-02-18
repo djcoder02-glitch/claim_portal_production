@@ -482,7 +482,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Button variant="ghost" size="sm" asChild className="hover:bg-slate-100">
-                  <Link to="/">
+                  <Link to="/claims">
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Back to Dashboard
                   </Link>

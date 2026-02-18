@@ -2145,6 +2145,7 @@ const allFields = [...uniqueConvertedFields, ...sectionCustomFields];
           <div className="flex items-stretch">
             <CollapsibleTrigger asChild>
               <Button
+                type="button"
                 variant="ghost"
                 className={`flex-1 justify-between p-4 h-auto text-left text-white hover:opacity-90 transition-all duration-200 rounded-tl-lg rounded-tr-none`}
 style={{ backgroundColor: '#6B7FB8' }}
@@ -2492,7 +2493,23 @@ style={{ backgroundColor: '#6B7FB8' }}
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form 
+            onSubmit={handleSubmit(onSubmit)} 
+            className="space-y-4"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                const focusableElements = Array.from(
+                  e.currentTarget.querySelectorAll<HTMLElement>(
+                    'input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
+                  )
+                );
+                const currentIndex = focusableElements.indexOf(e.target as HTMLElement);
+                const nextElement = focusableElements[currentIndex + 1];
+                if (nextElement) nextElement.focus();
+              }
+            }}
+          >
             {dynamicSections
               .sort((a, b) => a.order_index - b.order_index)
               .map((section) => (
