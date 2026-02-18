@@ -59,12 +59,12 @@ const API_BASE = "https://mlkkk63swrqairyiahlk357sui0argkn.lambda-url.ap-south-1
 const FIXED_TEXT = {
   pageTitle: "Fee Bill Details",
   invoiceHeader: "SURVEY FEE INVOICE",
-  companyAddress: "UNITED INDIA INSURANCE CO. LTD., D.O. Tatibandh,\nRaipur",
+  companyAddress: "INDIA INSURANCE CO. LTD., D.O. Tatibandh,\n Jaipur",
   nonGstBadge: "NON-GST INVOICE",
   bankDetailsLabel: "BANK DETAILS FOR RTGS",
-  bankName: "ICICI BANK LTD., Nehru Nagar (East), Bhilai-490020 (C.G.)",
-  accountNumber: "001605050333",
-  ifscCode: "ICIC0000186",
+  bankName: "ICICI BANK LTD., Jaipur 002344",
+  accountNumber: "001123456789",
+  ifscCode: "ICIC0000345",
   feeTableNote: "** All the below amounts are in Indian Rupees **",
   signatureName: "RAJESH",
   advanceReceiptHeader: "ADVANCE RECEIPT",
@@ -449,7 +449,7 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
         {
           type: "para",
           props: { 
-            text: `Received with thanks from 'United India Insurance Co. Ltd.' a sum of ${numberToWords(Number(values.total_amount))} Only towards above survey-bill.\n\n${FIXED_TEXT.signatureName}` 
+            text: `Received with thanks from 'India Insurance Co. Ltd.' a sum of ${numberToWords(Number(values.total_amount))} Only towards above survey-bill.\n\n${FIXED_TEXT.signatureName}` 
           },
         },
       ],
@@ -790,7 +790,7 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
           <tbody>
             <tr>
               <td style={{ padding: '20px' }}>
-                Received with thanks from <b>'United India Insurance Co. Ltd.'</b> a sum of{' '}
+                Received with thanks from <b>'India Insurance Co. Ltd.'</b> a sum of{' '}
                 <strong>{numberToWords(Number(watch('total_amount')) || 0)} Only</strong>
                 {' '}towards above survey-bill.
               </td>
