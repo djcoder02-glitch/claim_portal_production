@@ -13,12 +13,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { usePolicyTypes, useCreateClaim } from "@/hooks/useClaims";
-import { ChevronRight, FileText, Car, Anchor, Wrench, Flame, Users, Settings, Shuffle } from "lucide-react";
+import { ChevronRight, FileText, Car, Anchor, Wrench, Flame, Users, Settings, Shuffle, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useSurveyors } from "@/hooks/useSurveyors";
 import { useInsurers, useAddInsurer } from "@/hooks/useInsurers";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { supabase } from "@/integrations/supabase/client"; // add this
+import { toast } from "sonner"; // add this
 
 interface NewClaimDialogProps {
   open: boolean;
@@ -52,6 +54,10 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>("");
   const navigate = useNavigate();
   const [dynamicFields, setDynamicFields] = useState<any[]>([]);
+  const [addSubtypeOpen, setAddSubtypeOpen] = useState(false);
+  const [newSubtypeName, setNewSubtypeName] = useState("");
+  const [newSubtypeDesc, setNewSubtypeDesc] = useState("");
+  const [addingSubtype, setAddingSubtype] = useState(false);
 
   const {
     register,
@@ -72,11 +78,35 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
   });
 
   const { data: policyTypes = [], isLoading: policyTypesLoading } = usePolicyTypes();
+  console.log("Loaded policy types:", policyTypes);
   const createClaimMutation = useCreateClaim();
 
   const { data: surveyors = [], isLoading: surveyorsLoading } = useSurveyors();
   const { data: insurers = [], isLoading: insurersLoading } = useInsurers();
   const addInsurerMutation = useAddInsurer();
+
+  const handleAddSubtype = async () => {
+    if (!newSubtypeName.trim()) return;
+    setAddingSubtype(true);
+    try {
+      const { data, error } = await supabase.rpc("add_custom_policy_subtype", {
+        p_name: newSubtypeName.trim(),
+        p_description: newSubtypeDesc.trim() || null,
+        p_parent_id: selectedMainType,
+      });
+      if (error) throw error;
+      toast.success("Subtype added!");
+      qc.invalidateQueries({ queryKey: ["policy_types"] });
+      setNewSubtypeName("");
+      setNewSubtypeDesc("");
+      setAddSubtypeOpen(false);
+    } catch (e) {
+      console.error("Add subtype error:", e);
+      toast.error("Failed to add subtype");
+    } finally {
+      setAddingSubtype(false);
+    }
+  };
 
   const handlePolicySelect = (policyTypeId: string) => {
     setSelectedPolicyType(policyTypeId);
@@ -350,10 +380,37 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
                   <h3 className="text-lg font-semibold">
                     Select {policyTypes.find((p) => p.id === selectedMainType)?.name} Subtype
                   </h3>
-                  <Button variant="outline" size="sm" onClick={() => setSelectedMainType("")}>
-                    Back to Categories
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setAddSubtypeOpen(!addSubtypeOpen)}>
+                      <Plus className="w-4 h-4 mr-1" /> Add Custom
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedMainType("")}>
+                      Back to Categories
+                    </Button>
+                  </div>
                 </div>
+
+                {addSubtypeOpen && (
+                  <div className="border rounded-md p-4 space-y-3 bg-muted/30">
+                    <p className="text-sm font-medium">New Custom Subtype</p>
+                    <Input
+                      placeholder="Subtype name (e.g. Fleet, HMV)"
+                      value={newSubtypeName}
+                      onChange={(e) => setNewSubtypeName(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Description (optional)"
+                      value={newSubtypeDesc}
+                      onChange={(e) => setNewSubtypeDesc(e.target.value)}
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => setAddSubtypeOpen(false)}>Cancel</Button>
+                      <Button size="sm" onClick={handleAddSubtype} disabled={addingSubtype || !newSubtypeName.trim()}>
+                        {addingSubtype ? "Adding..." : "Add Subtype"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {policyTypes

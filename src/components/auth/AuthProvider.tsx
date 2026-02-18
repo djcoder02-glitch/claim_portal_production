@@ -12,6 +12,7 @@ interface AuthContextType {
   userRole: UserRole | null;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  companyId?: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   userRole: null,
   isAdmin: false,
   isSuperAdmin: false,
+  companyId: null,
 });
 
 export const useAuth = () => {
@@ -40,6 +42,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
 
   const fetchUserRole = async (userId: string) => {
     try {
@@ -80,6 +83,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       setUserRole((data.role as UserRole) || 'user');
+      setCompanyId(data.company_id || null);
     } catch (error) {
       console.error('Unexpected error fetching user role:', error);
       setUserRole('user');
@@ -107,6 +111,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           fetchUserRole(session.user.id);
         } else {
           setUserRole(null);
+          setCompanyId(null);
         }
         
         setLoading(false);
@@ -120,7 +125,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const isSuperAdmin = userRole === 'superadmin';
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin, isSuperAdmin }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, isAdmin, isSuperAdmin, companyId }}>
       {children}
     </AuthContext.Provider>
   );

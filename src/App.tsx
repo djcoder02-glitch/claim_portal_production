@@ -31,6 +31,7 @@ import CompanyManagement from "@/pages/CompanyManagement";
 import Notifications from "./pages/Notifications";
 import { Agents } from "./pages/Agents";
 import { AgentsBrokers } from "./pages/AgentsBrokers";
+import { SurveyorsPage } from "./pages/Surveyors";
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,8 @@ const App = () => (
               
               {/* Agents and Brokers */}
               <Route path="/agents-brokers" element={<AgentsBrokers />} />
+
+              <Route path="/surveyors" element={<SurveyorsPage />} />
               
               {/* Customers */}
               <Route path="/customers" element={<Customers />} />

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
-import { Claim, useDeleteClaim } from "@/hooks/useClaims";
+import { Claim, useDeleteClaim, usePolicyTypes } from "@/hooks/useClaims";
 
 interface ClaimsTableProps {
   claims: Claim[];
@@ -31,6 +31,7 @@ const statusColors: Record<string, string> = {
 };
 
 export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
+  console.log("Rendering ClaimsTable with claims:", claims);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>('updated_at');
@@ -41,6 +42,14 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const deleteClaim = useDeleteClaim();
+
+  const { data: policyTypes = [] } = usePolicyTypes();
+
+  const getParentPolicyName = (claim: Claim) => {
+    console.log("policy_type_id:", claim.policy_type_id);
+    const subtype = policyTypes.find(pt => pt.id == claim.policy_type_id);
+    return subtype ? subtype.name : null;
+  };
 
   // Filter and sort claims
   const filteredAndSortedClaims = useMemo(() => {
@@ -259,7 +268,8 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                       </Badge>
                     </div>
                     <div className="space-y-2 text-xs text-muted-foreground">
-                      <div>Claim <Type></Type>: {claim.claim_type || 'N/A'}</div>
+                      <div>Claim Type: {claim.claim_type || 'N/A'}</div>
+                      <div>Policy Type: {getParentPolicyName(claim) || 'N/A'}</div>  
                       <div>Insured: {claim.insured_name || 'N/A'}</div>
                       <div>Created: {format(new Date(claim.created_at), 'MMM dd, yyyy')}</div>
                       <div>Updated: {format(new Date(claim.updated_at), 'MMM dd, yyyy')}</div>
@@ -303,6 +313,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                   </div>
                 </TableHead>
                 <TableHead>Claim Type</TableHead>
+                <TableHead>Policy Type</TableHead>
                 <TableHead>Insured Name</TableHead>
                 <TableHead>Assigned Surveyor</TableHead>
                 <TableHead>Insurer</TableHead>
@@ -337,6 +348,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                     </Badge>
                   </TableCell>
                   <TableCell>{claim.claim_type || '-'}</TableCell>
+                  <TableCell>{getParentPolicyName(claim) || '-'}</TableCell>
                   <TableCell>{claim.insured_name || '-'}</TableCell>
                   <TableCell>{claim.surveyor_name || '-'}</TableCell>
                   <TableCell>{claim.insurer_name || '-'}</TableCell>

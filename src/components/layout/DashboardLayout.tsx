@@ -12,7 +12,8 @@ import {
   Building2,
   Bell,
   LogOut,Star,
-  ChevronLeft,Image
+  ChevronLeft,Image,
+  UserCog2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -123,11 +124,18 @@ const getOtherNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] =>
         href: "/agents-brokers",
         icon: UserCog,
       },
+      
+      {
+        title: "Surveyors",
+        href: "/surveyors",
+        icon: UserCog,
+      },
       {
         title: "Customers",
         href: "/customers",
         icon: Building2,
       },
+      
       {
         title: "Notifications",
         href: "/notifications",
