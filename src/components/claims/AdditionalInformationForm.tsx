@@ -1868,7 +1868,7 @@ const loadTemplate = (template: FormTemplate) => {
                 <Textarea
                   id={field.name}
                   placeholder={`Enter ${field.label.toLowerCase()}`}
-                  rows={4}
+                  rows={3}
                   {...register(field.name, { 
                     required: field.required ? `${field.label} is required` : false,
                     onChange: (e) => {

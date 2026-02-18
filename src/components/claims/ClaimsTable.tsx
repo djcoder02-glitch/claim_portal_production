@@ -37,7 +37,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showFilters, setShowFilters] = useState(false);
-  const [policyTypeFilter, setPolicyTypeFilter] = useState("all");
+  const [claimTypeFilter, setClaimTypeFilter] = useState("all");
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const deleteClaim = useDeleteClaim();
@@ -53,7 +53,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
         (claim.policy_types?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStatus = statusFilter === "all" || claim.status === statusFilter;
-      const matchesPolicyType = policyTypeFilter === "all" || claim.policy_types?.name === policyTypeFilter;
+      const matchesClaimType = claimTypeFilter === "all" || claim.policy_types?.name === claimTypeFilter;
       
       const matchesDateRange = (() => {
         if (!dateFromFilter && !dateToFilter) return true;
@@ -67,7 +67,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
         return true;
       })();
       
-      return matchesSearch && matchesStatus && matchesPolicyType && matchesDateRange;
+      return matchesSearch && matchesStatus && matchesClaimType && matchesDateRange;
     });
 
     // Sort claims
@@ -96,9 +96,9 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
     });
 
     return filtered;
-  }, [claims, searchTerm, statusFilter, policyTypeFilter, dateFromFilter, dateToFilter, sortKey, sortOrder]);
+  }, [claims, searchTerm, statusFilter, claimTypeFilter, dateFromFilter, dateToFilter, sortKey, sortOrder]);
 
-  const uniquePolicyTypes = Array.from(new Set(claims.map(claim => claim.policy_types?.name).filter(Boolean)));
+  const uniqueClaimTypes = Array.from(new Set(claims.map(claim => claim.policy_types?.name).filter(Boolean)));
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -191,13 +191,13 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">Policy Type</label>
-                <Select value={policyTypeFilter} onValueChange={setPolicyTypeFilter}>
+                <Select value={claimTypeFilter} onValueChange={setClaimTypeFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Policy Types" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Policy Types</SelectItem>
-                    {uniquePolicyTypes.map(type => (
+                    {uniqueClaimTypes.map(type => (
                       <SelectItem key={type} value={type!}>{type}</SelectItem>
                     ))}
                   </SelectContent>
@@ -220,12 +220,12 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                 />
               </div>
             </div>
-            {(policyTypeFilter !== "all" || dateFromFilter || dateToFilter) && (
+            {(claimTypeFilter !== "all" || dateFromFilter || dateToFilter) && (
               <Button 
                 variant="ghost" 
                 size="sm" 
                 onClick={() => {
-                  setPolicyTypeFilter("all");
+                  setClaimTypeFilter("all");
                   setDateFromFilter("");
                   setDateToFilter("");
                 }}

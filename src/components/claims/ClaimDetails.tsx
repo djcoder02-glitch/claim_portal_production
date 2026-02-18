@@ -493,25 +493,25 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
                       {claim.title}
                     </h1>
                     {/* Display Badge separately */}
-                    <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
+                    {/* <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
                       <StatusIcon className="w-3 h-3" />
                       {currentStatus?.label}
-                    </Badge>
+                    </Badge> */}
                     {/* Dropdown for changing status */}
                     <Select
                       value={claim.status}
                       onValueChange={(newStatus: ClaimStatus) => handleStatusUpdate(newStatus)}
                     >
-                      <SelectTrigger className="w-[180px]">
+                     <SelectTrigger className={`w-[180px] text-white border-0 ml-2 mb-1 ${currentStatus?.color}`}>
                         <SelectValue placeholder="Change status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="submitted">Submitted</SelectItem>
-                        <SelectItem value="under_review">Under Review</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="pending" className="text-blue-600 font-medium">Pending</SelectItem>
+                        <SelectItem value="submitted" className="text-slate-600 font-medium">Submitted</SelectItem>
+                        <SelectItem value="under_review" className="text-amber-600 font-medium">Under Review</SelectItem>
+                        <SelectItem value="approved" className="text-green-700 font-medium">Approved</SelectItem>
+                        <SelectItem value="rejected" className="text-red-600 font-medium">Rejected</SelectItem>
+                        <SelectItem value="paid" className="text-green-800 font-medium">Paid</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
