@@ -93,11 +93,11 @@ const getMainNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] => 
         href: "/management",
         icon: Users,
       },
-      {
-        title: "Image Generator",
-        href: "/image-generator",
-        icon: Image,
-      },
+      // {
+      //   title: "Image Generator",
+      //   href: "/image-generator",
+      //   icon: Image,
+      // },
     ];
   }
 

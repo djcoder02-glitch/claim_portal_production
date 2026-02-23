@@ -482,7 +482,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Button variant="ghost" size="sm" asChild className="hover:bg-slate-100">
-                  <Link to="/claims">
+                  <Link to="/">
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Back to Dashboard
                   </Link>
@@ -493,25 +493,25 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
                       {claim.title}
                     </h1>
                     {/* Display Badge separately */}
-                    {/* <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
+                    <Badge className={`${currentStatus?.color} text-white px-3 py-1 flex items-center gap-1 shadow-sm`}>
                       <StatusIcon className="w-3 h-3" />
                       {currentStatus?.label}
-                    </Badge> */}
+                    </Badge>
                     {/* Dropdown for changing status */}
                     <Select
                       value={claim.status}
                       onValueChange={(newStatus: ClaimStatus) => handleStatusUpdate(newStatus)}
                     >
-                     <SelectTrigger className={`w-[180px] text-white border-0 ml-2 mb-1 ${currentStatus?.color}`}>
+                      <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Change status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="pending" className="text-blue-600 font-medium">Pending</SelectItem>
-                        <SelectItem value="submitted" className="text-slate-600 font-medium">Submitted</SelectItem>
-                        <SelectItem value="under_review" className="text-amber-600 font-medium">Under Review</SelectItem>
-                        <SelectItem value="approved" className="text-green-700 font-medium">Approved</SelectItem>
-                        <SelectItem value="rejected" className="text-red-600 font-medium">Rejected</SelectItem>
-                        <SelectItem value="paid" className="text-green-800 font-medium">Paid</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="submitted">Submitted</SelectItem>
+                        <SelectItem value="under_review">Under Review</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

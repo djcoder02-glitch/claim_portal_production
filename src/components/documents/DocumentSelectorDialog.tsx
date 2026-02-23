@@ -45,7 +45,11 @@ export const DocumentSelectorDialog = ({
 
       if (error) throw error;
       // Filter out placeholders from the selection dialog
-      return data?.filter(doc => doc.file_type !== 'placeholder') || [];
+      return data?.filter(doc => 
+        doc.file_type !== 'placeholder' &&
+        !doc.file_name.startsWith('__BATCH_TOKEN_') &&
+        !doc.file_name.startsWith('__TOKEN_PLACEHOLDER_')
+      ) || [];
     },
     enabled: open,
   });
