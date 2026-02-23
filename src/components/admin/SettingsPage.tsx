@@ -1,11 +1,15 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, FileText, Edit } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Edit, Globe } from "lucide-react";
 import { PolicyTypesManager } from "@/components/admin/PolicyTypesManager";
 import { NewClaimFieldsManager } from "@/components/admin/NewClaimFieldsManager";
 import { DocumentRequirementsManager } from "@/components/admin/DocumentRequirementsManager";
 import { ParsingConfigManager } from "@/components/admin/ParsingConfigManager";
+import { GlobalTemplatesManager } from "@/components/admin/GlobalTemplatesManager";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export const SettingsPage = () => {
+  const { isSuperAdmin } = useAuth();
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-3">
@@ -19,7 +23,7 @@ export const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="policy-types" className="space-y-6">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className={`grid w-full max-w-3xl ${isSuperAdmin ? 'grid-cols-5' : 'grid-cols-4'}`}>
           <TabsTrigger value="policy-types" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Policy Types
@@ -30,12 +34,18 @@ export const SettingsPage = () => {
           </TabsTrigger>
           <TabsTrigger value="doc-requirements" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            Document Requirements
+            Doc Requirements
           </TabsTrigger>
           <TabsTrigger value="parsing-config" className="flex items-center gap-2">
             <SettingsIcon className="w-4 h-4" />
             Parsing Config
           </TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="global-templates" className="flex items-center gap-2">
+              <Globe className="w-4 h-4" />
+              Global Templates
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="policy-types" className="space-y-4">
@@ -45,14 +55,20 @@ export const SettingsPage = () => {
         <TabsContent value="claim-fields" className="space-y-4">
           <NewClaimFieldsManager />
         </TabsContent>
-        
+
         <TabsContent value="doc-requirements" className="space-y-4">
           <DocumentRequirementsManager />
         </TabsContent>
-        
+
         <TabsContent value="parsing-config" className="space-y-4">
           <ParsingConfigManager />
         </TabsContent>
+
+        {isSuperAdmin && (
+          <TabsContent value="global-templates" className="space-y-4">
+            <GlobalTemplatesManager />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -40,10 +40,10 @@ export const useSectionTemplates = (policyTypeId?: string) => {
       
       const parentId = policyType.parent_id || policyType.id;
       
-      const { data, error } = await supabase
+       const { data, error } = await supabase
         .from('section_templates')
         .select('*')
-        .or(`parent_policy_type_id.eq.${parentId},parent_policy_type_id.is.null`)
+        .or(`parent_policy_type_id.eq.${parentId},parent_policy_type_id.is.null,is_global.eq.true`)
         .order('is_default', { ascending: false })
         .order('name');
       

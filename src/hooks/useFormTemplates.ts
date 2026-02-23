@@ -59,14 +59,23 @@ export const useFormTemplates = (policyTypeId?: string) => {
     queryFn: async () => {
       try {
         // Step 1: Get templates
+        const { data: authData } = await supabase.auth.getUser();
+        const { data: userProfile } = await supabase
+          .from('users')
+          .select('company_id')
+          .eq('id', authData.user?.id || '')
+          .single();
+
         let templatesQuery = supabase
           .from('form_templates')
           .select('*')
+          .or(`is_global.eq.true,company_id.eq.${userProfile?.company_id}`)
           .order('created_at', { ascending: false });
 
         if (policyTypeId) {
           templatesQuery = templatesQuery.eq('policy_type_id', policyTypeId);
         }
+
 
         const { data: templates, error: templatesError } = await templatesQuery;
         if (templatesError) throw templatesError;
@@ -138,12 +147,14 @@ export const useSaveTemplate = () => {
       name,
       description,
       policyTypeId,
-      sections
+      sections,
+      isGlobal
     }: {
       name: string;
       description?: string;
       policyTypeId?: string;
       sections: DynamicSection[];
+      isGlobal?: boolean;
     }) => {
       const { data: userData } = await supabase.auth.getUser();
 
@@ -165,7 +176,8 @@ export const useSaveTemplate = () => {
           description,
           policy_type_id: policyTypeId || null,  // FIXED: handle undefined
           created_by: userData.user?.id,
-          company_id: userProfile?.company_id
+          company_id: isGlobal ? null : userProfile?.company_id,
+          is_global: isGlobal || false,
         })
         .select()
         .single();
