@@ -312,7 +312,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                     {getSortIcon('status')}
                   </div>
                 </TableHead>
-                <TableHead>Claim Type</TableHead>
+                {/* <TableHead>Claim Type</TableHead> */}
                 <TableHead>Policy Type</TableHead>
                 <TableHead>Insured Name</TableHead>
                 <TableHead>Assigned Surveyor</TableHead>
@@ -347,7 +347,7 @@ export const ClaimsTable = ({ claims }: ClaimsTableProps) => {
                       {formatStatus(claim.status)}
                     </Badge>
                   </TableCell>
-                  <TableCell>{claim.claim_type || '-'}</TableCell>
+                  {/* <TableCell>{claim.claim_type || '-'}</TableCell> */}
                   <TableCell>{getParentPolicyName(claim) || '-'}</TableCell>
                   <TableCell>{claim.insured_name || '-'}</TableCell>
                   <TableCell>{claim.surveyor_name || '-'}</TableCell>

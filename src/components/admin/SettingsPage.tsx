@@ -6,6 +6,9 @@ import { DocumentRequirementsManager } from "@/components/admin/DocumentRequirem
 import { ParsingConfigManager } from "@/components/admin/ParsingConfigManager";
 import { GlobalTemplatesManager } from "@/components/admin/GlobalTemplatesManager";
 import { useAuth } from "@/components/auth/AuthProvider";
+// Add import at the top with other imports
+import { CompanyDetailsManager } from "@/components/admin/CompanyDetailsManager";
+import { Building2 } from "lucide-react"; // add to existing lucide import line
 
 export const SettingsPage = () => {
   const { isSuperAdmin } = useAuth();
@@ -23,7 +26,7 @@ export const SettingsPage = () => {
       </div>
 
       <Tabs defaultValue="policy-types" className="space-y-6">
-        <TabsList className={`grid w-full max-w-3xl ${isSuperAdmin ? 'grid-cols-5' : 'grid-cols-4'}`}>
+        <TabsList className={`grid w-full max-w-4xl ${isSuperAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
           <TabsTrigger value="policy-types" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Policy Types
@@ -39,6 +42,10 @@ export const SettingsPage = () => {
           <TabsTrigger value="parsing-config" className="flex items-center gap-2">
             <SettingsIcon className="w-4 h-4" />
             Parsing Config
+          </TabsTrigger>
+          <TabsTrigger value="company-details" className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" />
+            Company Details
           </TabsTrigger>
           {isSuperAdmin && (
             <TabsTrigger value="global-templates" className="flex items-center gap-2">
@@ -62,6 +69,10 @@ export const SettingsPage = () => {
 
         <TabsContent value="parsing-config" className="space-y-4">
           <ParsingConfigManager />
+        </TabsContent>
+
+        <TabsContent value="company-details" className="space-y-4">
+          <CompanyDetailsManager />
         </TabsContent>
 
         {isSuperAdmin && (
