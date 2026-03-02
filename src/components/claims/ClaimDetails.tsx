@@ -23,6 +23,7 @@ import {SelectiveDocumentExtractor} from "./SelectiveDocumentExtractor"
 import { FeeBillForm } from "./FeeBillForm";
 import { Assessment } from "./Assessment";
 import { DocumentsTab } from "../documents/DocumentsTab";
+import { createNotification } from "@/lib/notifications";
 
 
 
@@ -283,17 +284,25 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
     }
   };
 
+
+  // After:
   const handleStatusUpdate = async (newStatus: ClaimStatus) => {
     try {
       await updateClaimMutation.mutateAsync({
         id: claim!.id,
         updates: { status: newStatus }
       });
-      
-      // Invalidate and refetch the claim data
-      queryClient.invalidateQueries({ queryKey: ["claim", id] });
-      
-      toast.success(`Claim status updated to ${newStatus.replace('_', ' ')}`);
+      toast.success(`Claim status updated to ${newStatus}`);
+
+      // Fire completion notification when marked approved or paid
+      if (newStatus === 'approved' || newStatus === 'paid') {
+        createNotification({
+          title: 'Claim Marked Completed',
+          message: `Claim ${claim!.claim_number} has been marked as ${newStatus}.`,
+          type: 'approval',
+          claimId: claim!.id,
+        });
+      }
     } catch (error) {
       toast.error("Failed to update claim status");
     }
@@ -438,7 +447,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
               The claim you're looking for doesn't exist or you don't have access to it.
             </p>
             <Button asChild className="w-full bg-slate-600 hover:bg-slate-700 text-white shadow-sm transition-all duration-200">
-              <Link to="/">
+              <Link to="/claims">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Dashboard
               </Link>
@@ -459,7 +468,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
             You don't have permission to view this claim.
           </p>
           <Button asChild className="w-full bg-slate-600 hover:bg-slate-700 text-white shadow-sm transition-all duration-200">
-            <Link to="/">
+            <Link to="/claims">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
             </Link>
@@ -482,7 +491,7 @@ const handleBillOfEntryExtracted = async (extractedData: Record<string, any>) =>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Button variant="ghost" size="sm" asChild className="hover:bg-slate-100">
-                  <Link to="/">
+                  <Link to="/claims">
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Back to Dashboard
                   </Link>

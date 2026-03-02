@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
 /**
  * Navbar Component
@@ -70,6 +71,25 @@ export const Navbar = ({
    * Get current date in readable format
    * Example: "Saturday, November 8, 2025"
    */
+
+  // Before: const getCurrentDate = () => {
+  const db = supabase as any;
+
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['notifications-unread', user?.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('notifications')
+        .select('id')
+        .eq('read', false);
+      if (error) return 0;
+      return data?.length ?? 0;
+    },
+    enabled: !!user,
+    refetchInterval: 30000, // poll every 30s
+  });
+
+
   const getCurrentDate = () => {
     const options: Intl.DateTimeFormatOptions = { 
       weekday: 'long', 
@@ -195,47 +215,24 @@ export const Navbar = ({
               {getCurrentDate()}
             </div>
 
-            {/* Notifications Button with Badge */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="relative">
-                  <Bell className="w-5 h-5 text-gray-600" />
-                  {/* Notification Badge */}
-                  <Badge 
-                    variant="destructive" 
-                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-                  >
-                    2
-                  </Badge>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <div className="max-h-[300px] overflow-y-auto">
-                  {/* Sample Notifications */}
-                  <DropdownMenuItem className="flex flex-col items-start p-3 cursor-pointer">
-                    <p className="font-medium text-sm">New claim submitted</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Claim #CLM-2024-001 requires your attention
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">2 hours ago</p>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="flex flex-col items-start p-3 cursor-pointer">
-                    <p className="font-medium text-sm">Survey completed</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      John Smith completed survey for claim #CLM-2024-002
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">5 hours ago</p>
-                  </DropdownMenuItem>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-center justify-center text-blue-600 cursor-pointer">
-                  View all notifications
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+{/* Notifications Button with Badge */}
+            {/* Why: live unread count from DB, navigate to /notifications on click */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative"
+              onClick={() => navigate("/notifications")}
+            >
+              <Bell className="w-5 h-5 text-gray-600" />
+              {unreadCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Badge>
+              )}
+            </Button>
 
             {/* User Profile Dropdown */}
             <DropdownMenu>

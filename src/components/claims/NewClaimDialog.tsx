@@ -21,6 +21,8 @@ import { useInsurers, useAddInsurer } from "@/hooks/useInsurers";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { supabase } from "@/integrations/supabase/client"; // add this
 import { toast } from "sonner"; // add this
+import { createNotification } from "@/lib/notifications";
+
 
 interface NewClaimDialogProps {
   open: boolean;
@@ -91,7 +93,7 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
     try {
       const { data, error } = await supabase.rpc("add_custom_policy_subtype", {
         p_name: newSubtypeName.trim(),
-        p_description: newSubtypeDesc.trim() || null,
+        p_description: newSubtypeDesc.trim() || "",
         p_parent_id: selectedMainType,
       });
       if (error) throw error;
@@ -115,7 +117,7 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
 
   useEffect(() => {
     if (selectedPolicyType && policyTypes) {
-      const policyType = policyTypes.find((pt) => pt.id === selectedPolicyType);
+      const policyType = policyTypes.find((pt) => pt.id === selectedPolicyType) as any;
 
       if (policyType?.fields?.new_claim_fields) {
         setDynamicFields(
@@ -164,6 +166,12 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
       setSelectedPolicyType("");
 
       navigate(`/claims/${claim.id}`);
+      createNotification({
+        title: 'New Claim Created',
+        message: `Claim ${claim.claim_number ?? ''} (${data.title}) has been created.`,
+        type: 'claim',
+        claimId: claim.id,
+      });
     } catch (error) {
       console.error("Failed to create claim:", error);
     }
@@ -198,7 +206,7 @@ export const NewClaimDialog = ({ open, onOpenChange }: NewClaimDialogProps) => {
   
 
   const renderDynamicField = (field: any) => {
-    const errorMsg = errors[field.name]?.message as string;
+    const errorMsg = (errors as any)[field.name]?.message as string;
 
     const wrapper = (children: JSX.Element) => (
       <div key={field.name} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">

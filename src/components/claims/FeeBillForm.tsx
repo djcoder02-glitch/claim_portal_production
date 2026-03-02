@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { Loader2, Save } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+// After: import { supabase } from "@/integrations/supabase/client";
+import { createNotification } from "@/lib/notifications";
 
 // Number to words converter
 const numberToWords = (num: number): string => {
@@ -345,7 +347,17 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
           },
         },
         { type: "subheader", props: { text: FIXED_TEXT.bankDetailsLabel } },
-        { type: "para", props: { text: `${companyDetails.bank_name} | A/C No.- ${companyDetails.account_number} | IFSC: ${companyDetails.ifsc_code}` } },
+        {
+          type: "table",
+          props: {
+            headers: ["Field", "Value"],
+            rows: [
+              ["Bank Name", companyDetails.bank_name],
+              ["Account No.", companyDetails.account_number],
+              ["IFSC Code", companyDetails.ifsc_code],
+            ],
+          },
+        },
         { type: "subheader", props: { text: "Policy Information" } },
         {
           type: "table",
@@ -382,9 +394,12 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
         {
           type: "para",
           props: { 
-            text: `Received with thanks from '${companyDetails.company_address}' a sum of ${numberToWords(Number(values.total_amount))} Only towards above survey-bill.\n\n${companyDetails.signature_name}` 
+            text: `Received with thanks from '${companyDetails.company_address}' a sum of ${numberToWords(Number(values.total_amount))} Only towards above survey-bill.` 
           },
         },
+        { type: "spacer", props: { size: "md" } },
+        { type: "para", props: { text: "_______________________" } },
+        { type: "para", props: { text: companyDetails.signature_name }, style: { text: "font-bold text-md" } }
       ],
     };
 
@@ -406,6 +421,14 @@ export const FeeBillForm = ({ claim }: FeeBillFormProps) => {
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       toast.success("Fee bill PDF opened in new tab");
+
+      // Trigger notification — non-blocking
+      createNotification({
+        title: 'Fee Bill Generated',
+        message: `Fee bill for claim ${values.invoice_number} has been generated and printed.`,
+        type: 'approval',
+        claimId: claim.id,
+      });
     } catch (error) {
       console.error("Print fee bill error:", error);
       toast.error("Failed to print fee bill");

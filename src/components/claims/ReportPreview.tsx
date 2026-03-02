@@ -26,6 +26,8 @@ import { type Claim } from "@/hooks/useClaims";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+// After: import { supabase } from "@/integrations/supabase/client";
+import { createNotification } from "@/lib/notifications";
 
 /* =========================
    Types
@@ -226,11 +228,11 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
       const fields = additionalInfoSection.fields || [];
       
       const fieldData = fields
-        .map(field => {
+        .map((field: { name: string; label: string }) => {
           const value = sectionsData[field.name];
           return { label: field.label, value };
         })
-        .filter(({ value }) => value != null && String(value).trim() !== "");
+        .filter(({ value }: { label: string; value: any }) => value != null && String(value).trim() !== "");
 
       if (fieldData.length === 0) return null;
 
@@ -253,7 +255,7 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
     const entries =
       (meta.fields || [])
         .map((f: any) => ({ label: f.label || labelize(f.name), value: sectionsData[f.name] }))
-        .filter(({ value }) => value != null && String(value).trim() !== "");
+        .filter(({ value }: any) => value != null && String(value).trim() !== "");
 
     const imageKey = `${section.id}_images`;
     const imageUrls = Array.isArray(sectionsData[imageKey]) ? sectionsData[imageKey].filter(Boolean) : [];
@@ -268,7 +270,7 @@ const SortableSection = ({ section, onVisibilityChange, claim }: SortableSection
       <div className="space-y-4">
         {entries.length > 0 && (
           <div className="space-y-2">
-            {entries.map(({ label, value }) => (
+            {entries.map(({ label, value }: any) => (
               <div key={label} className="flex justify-between">
                 <span className="text-muted-foreground">{label}</span>
                 <span className="font-medium">{String(value)}</span>
@@ -472,8 +474,6 @@ function buildReportJson(
           ],
         },
       });
-      if (claim.description)
-        components.push({ type: "para", props: { text: `Description: ${claim.description}` } });
       continue;
     }
 
@@ -691,6 +691,14 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
+
+      // Trigger notification — non-blocking
+      createNotification({
+        title: 'Survey Report Generated',
+        message: `Report for claim ${claim.claim_number} has been previewed/generated.`,
+        type: 'system',
+        claimId: claim.id,
+      });
   };
 
   const handleDownload = async () => {
@@ -723,6 +731,13 @@ export const ReportPreview = ({ claim }: ReportPreviewProps) => {
     a.download = "report.pdf";
     a.click();
     URL.revokeObjectURL(url);
+
+      createNotification({
+        title: 'Survey Report Downloaded',
+        message: `Report for claim ${claim.claim_number} has been downloaded.`,
+        type: 'system',
+        claimId: claim.id,
+      });
   };
 
   return (

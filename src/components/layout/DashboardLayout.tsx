@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Navbar } from "./Navbar";
+import { useQuery } from "@tanstack/react-query";
 
 
 /**
@@ -140,7 +141,6 @@ const getOtherNavItems = (isAdmin: boolean, isSuperadmin: boolean): NavItem[] =>
         title: "Notifications",
         href: "/notifications",
         icon: Bell,
-        badge: 2,
       },
     ];
   }
@@ -248,6 +248,21 @@ export const DashboardLayout = () => {
   const [userStatus, setUserStatus] = useState<string>('user');
   const [isSuperadmin, setIsSuperadmin] = useState<boolean>(false);
 
+  const db = supabase as any;
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['notifications-unread', user?.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('notifications')
+        .select('id')
+        .eq('read', false);
+      if (error) return 0;
+      return data?.length ?? 0;
+    },
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
 useEffect(() => {
   if (user?.id) {
     supabase
@@ -270,7 +285,11 @@ useEffect(() => {
   console.log("Is Superadmin:", isSuperadmin);
   console.log("Is Admin:", isAdmin);
   const mainNavItems = getMainNavItems(isAdmin, isSuperadmin);
-  const otherNavItems = getOtherNavItems(isAdmin, isSuperadmin);
+  const otherNavItems = getOtherNavItems(isAdmin, isSuperadmin).map(item =>
+    item.href === '/notifications' && unreadCount > 0
+      ? { ...item, badge: unreadCount }
+      : item
+  );
   const location = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
