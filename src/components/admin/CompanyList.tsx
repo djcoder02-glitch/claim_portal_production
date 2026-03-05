@@ -15,6 +15,7 @@ import {
   TrendingUp,
   UserCheck,
   UserX,
+  ShieldCheck,
   Loader2
 } from "lucide-react";
 import { CompanyWithStats } from "@/hooks/useCompanies";
@@ -23,9 +24,10 @@ interface CompanyListProps {
   onCreateNew: () => void;
   onEditCompany: (company: CompanyWithStats) => void;
   onDeleteCompany: (companyId: string) => void;
+  onManageAccess: (company: CompanyWithStats) => void;
 }
 
-export const CompanyList = ({ onCreateNew, onEditCompany, onDeleteCompany }: CompanyListProps) => {
+export const CompanyList = ({ onCreateNew, onEditCompany, onDeleteCompany, onManageAccess }: CompanyListProps) => {
   const { data: companies, isLoading } = useCompanies();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -165,6 +167,14 @@ export const CompanyList = ({ onCreateNew, onEditCompany, onDeleteCompany }: Com
                 >
                   <Edit className="w-4 h-4 mr-1" />
                   Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onManageAccess(company)}
+                  title="Manage Policy Access"
+                >
+                  <ShieldCheck className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"

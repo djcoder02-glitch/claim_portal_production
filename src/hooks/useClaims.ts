@@ -75,15 +75,14 @@ export const usePolicyTypes = () => {
     queryKey: ["policy_types"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('policy_types')
-        .select('*')
-        .order('name');
+        .rpc('get_all_policy_types_admin');
       
       if (error) throw error;
       return data;
     },
   });
 };
+
 
 export const useCreateClaim = () => {
   const queryClient = useQueryClient();

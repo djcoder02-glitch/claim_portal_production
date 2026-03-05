@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CompanyList } from "@/components/admin/CompanyList";
 import { CompanyEditor, CompanyFormData } from "@/components/admin/CompanyEditor";
 import { CompanyRestrictionsEditor } from "@/components/admin/CompanyRestrictionsEditor";
+import { CompanyPolicyAccessEditor } from "@/components/admin/CompanyPolicyAccessEditor";
 import { StorageUsageDashboard } from "@/components/admin/StorageUsageDashboard"; // ADD THIS
 import {
   useCreateCompany,
@@ -29,7 +30,7 @@ const CompanyManagement = () => {
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithStats | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [companyToDelete, setCompanyToDelete] = useState<string | null>(null);
-
+  const [isPolicyAccessOpen, setIsPolicyAccessOpen] = useState(false);  
   const createCompany = useCreateCompany();
   const updateCompany = useUpdateCompany();
   const updateRestrictions = useUpdateCompanyRestrictions();
@@ -75,6 +76,12 @@ const CompanyManagement = () => {
     setDeleteDialogOpen(true);
   };
 
+  const handleManageAccess = (company: CompanyWithStats) => {
+  setSelectedCompany(company);
+  setIsPolicyAccessOpen(true);
+};
+
+
   const confirmDelete = async () => {
     if (companyToDelete) {
       await deleteCompany.mutateAsync(companyToDelete);
@@ -111,6 +118,7 @@ const CompanyManagement = () => {
           setIsRestrictionsOpen(true);
         }}
         onDeleteCompany={handleDeleteCompany}
+        onManageAccess={handleManageAccess}
       />
 
       {/* Company Editor Dialog */}
@@ -158,6 +166,16 @@ const CompanyManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CompanyPolicyAccessEditor
+        open={isPolicyAccessOpen}
+        onClose={() => {
+          setIsPolicyAccessOpen(false);
+          setSelectedCompany(null);
+        }}
+        company={selectedCompany}
+      />
+
     </div>
   );
 };
